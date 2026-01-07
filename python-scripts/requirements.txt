@@ -1,0 +1,14 @@
+# Dependencias Python para Scripts Standalone
+# Instalar con: c:\Python312\python.exe -m pip install -r requirements.txt
+
+# OpenAI SDK (versión actualizada)
+openai>=1.0.0
+
+# Procesamiento de imágenes
+Pillow>=10.0.0
+
+# Procesamiento de PDF (PyMuPDF no requiere Poppler)
+pymupdf>=1.22.0
+
+# Nota: Se ha cambiado pdf2image por PyMuPDF para evitar la instalación de Poppler.
+# Solo necesita ejecutar: c:\Python312\python.exe -m pip install -r requirements.txt

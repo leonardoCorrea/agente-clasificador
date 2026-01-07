@@ -1,0 +1,69 @@
+# Configuración Apache para el proyecto
+# Archivo .htaccess
+
+# Habilitar reescritura de URLs
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /agenteClasificador/
+    
+    # Redirigir a HTTPS (descomentar en producción)
+    # RewriteCond %{HTTPS} off
+    # RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+    
+    # Prevenir acceso a directorios sensibles
+    RewriteRule ^config/ - [F,L]
+    RewriteRule ^classes/ - [F,L]
+    RewriteRule ^database/ - [F,L]
+    RewriteRule ^python-services/ - [F,L]
+</IfModule>
+
+# Protección de archivos sensibles
+<FilesMatch "\.(env|sql|log)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Configuración de seguridad
+<IfModule mod_headers.c>
+    # Prevenir clickjacking
+    Header set X-Frame-Options "SAMEORIGIN"
+    
+    # Prevenir MIME sniffing
+    Header set X-Content-Type-Options "nosniff"
+    
+    # Habilitar XSS protection
+    Header set X-XSS-Protection "1; mode=block"
+    
+    # Política de referrer
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>
+
+# Configuración PHP
+<IfModule mod_php.c>
+    php_value upload_max_filesize 10M
+    php_value post_max_size 10M
+    php_value max_execution_time 60
+    php_value max_input_time 60
+    php_value memory_limit 256M
+</IfModule>
+
+# Compresión GZIP
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css text/javascript application/javascript application/json
+</IfModule>
+
+# Cache de archivos estáticos
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType image/jpg "access plus 1 year"
+    ExpiresByType image/jpeg "access plus 1 year"
+    ExpiresByType image/gif "access plus 1 year"
+    ExpiresByType image/png "access plus 1 year"
+    ExpiresByType text/css "access plus 1 month"
+    ExpiresByType application/javascript "access plus 1 month"
+</IfModule>
+
+# Página de error personalizada
+ErrorDocument 404 /agenteClasificador/public/404.php
+ErrorDocument 403 /agenteClasificador/public/403.php
+ErrorDocument 500 /agenteClasificador/public/500.php
