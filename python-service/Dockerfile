@@ -4,10 +4,8 @@ WORKDIR /app
 
 # Instalar dependencias del sistema necesarias para PyMuPDF y Pillow
 RUN apt-get update && apt-get install -y \
-    libgl1-mesa-glx \
     libglib2.0-0 \
-    libmupdf-dev \
-    mupdf-tools \
+    libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copiar requirements e instalar dependencias Python
