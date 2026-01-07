@@ -1,23 +1,95 @@
 <?php
 /**
  * Servicio OCR
- * Ejecuta script Python directamente para procesar OCR con Vision Multi
- * NO usa Flask ni servicios HTTP
+ * Llama al microservicio Python vía HTTP para procesar OCR con Vision Multi
+ * Usa FastAPI microservice desplegado en Railway
  */
 
 class OCRService
 {
     private $db;
-    private $pythonPath;
-    private $scriptPath;
     private $apiKey;
+    private $ocrServiceUrl;
 
     public function __construct()
     {
         $this->db = Database::getInstance();
-        $this->scriptPath = __DIR__ . '/../python-scripts/ocr_process.py';
         $this->apiKey = OPENAI_API_KEY; // Definida en config.php
-        $this->pythonPath = PYTHON_PATH;
+        $this->ocrServiceUrl = OCR_SERVICE_URL; // Definida en config.php
+    }
+
+    /**
+     * Llamar al microservicio OCR vía HTTP
+     * @param string $filePath Ruta al archivo a procesar
+     * @param array|null $context Contexto opcional para corroboración
+     * @param int $maxRetries Número máximo de reintentos
+     * @return array Resultado del OCR
+     * @throws Exception Si falla después de todos los reintentos
+     */
+    private function callOCRService($filePath, $context = null, $maxRetries = 3)
+    {
+        $attempt = 0;
+        $lastError = null;
+
+        while ($attempt < $maxRetries) {
+            try {
+                $ch = curl_init($this->ocrServiceUrl . '/api/ocr/process');
+
+                $postFields = [
+                    'file' => new CURLFile($filePath),
+                    'api_key' => $this->apiKey
+                ];
+
+                if ($context !== null) {
+                    $postFields['context'] = json_encode($context);
+                }
+
+                curl_setopt_array($ch, [
+                    CURLOPT_POST => true,
+                    CURLOPT_POSTFIELDS => $postFields,
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_TIMEOUT => 300, // 5 minutos
+                    CURLOPT_CONNECTTIMEOUT => 30,
+                    CURLOPT_HTTPHEADER => [
+                        'Accept: application/json'
+                    ]
+                ]);
+
+                $response = curl_exec($ch);
+                $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                $curlError = curl_error($ch);
+                curl_close($ch);
+
+                if ($curlError) {
+                    throw new Exception("Error de conexión con microservicio OCR: " . $curlError);
+                }
+
+                if ($httpCode !== 200) {
+                    throw new Exception("Microservicio OCR retornó código HTTP $httpCode: " . substr($response, 0, 500));
+                }
+
+                $result = json_decode($response, true);
+
+                if (json_last_error() !== JSON_ERROR_NONE) {
+                    throw new Exception("Respuesta inválida del microservicio OCR: " . json_last_error_msg());
+                }
+
+                return $result;
+
+            } catch (Exception $e) {
+                $lastError = $e;
+                $attempt++;
+
+                error_log("OCR Microservice - Intento $attempt de $maxRetries falló: " . $e->getMessage());
+
+                if ($attempt < $maxRetries) {
+                    // Exponential backoff: 2^attempt segundos
+                    sleep(pow(2, $attempt));
+                }
+            }
+        }
+
+        throw new Exception("Microservicio OCR falló después de $maxRetries intentos. Último error: " . $lastError->getMessage());
     }
 
     /**
@@ -50,103 +122,20 @@ class OCRService
             // Actualizar estado a procesando
             $this->db->update('facturas', ['estado' => 'procesando'], ['id' => $facturaId]);
 
-            // Ejecutar script Python con captura de stderr
-            $descriptorspec = [
-                0 => ["pipe", "r"],  // stdin
-                1 => ["pipe", "w"],  // stdout
-                2 => ["pipe", "w"]   // stderr
-            ];
+            // Llamar al microservicio OCR
+            $result = $this->callOCRService($filePath);
 
-            $command = sprintf(
-                '"%s" "%s" "%s" "%s"',
-                $this->pythonPath,
-                $this->scriptPath,
-                $filePath,
-                $this->apiKey
-            );
-
-            $process = proc_open($command, $descriptorspec, $pipes);
-
-            if (!is_resource($process)) {
-                throw new Exception("No se pudo iniciar el proceso de OCR. Comando: $command");
-            }
-
-            // Leer stdout y stderr
-            $output = stream_get_contents($pipes[1]);
-            $stderr = stream_get_contents($pipes[2]);
-
-            fclose($pipes[0]);
-            fclose($pipes[1]);
-            fclose($pipes[2]);
-
-            $returnCode = proc_close($process);
-
-            error_log("OCR Output (Raw): " . substr($output, 0, 500)); // Log first 500 chars
-
-            if (!empty($stderr)) {
-                error_log("OCR Stderr: " . $stderr);
-            }
-
-            if ($returnCode !== 0) {
-                throw new Exception("El script de OCR terminó con código de error $returnCode. Error: " . ($stderr ?: 'Sin detalles'));
-            }
-
-            if (empty($output)) {
-                throw new Exception("El script de OCR no devolvió ninguna salida. Stderr: " . ($stderr ?: 'Sin detalles'));
-            }
-
-            // Parsear resultado JSON
-            $jsonStart = strpos($output, '{');
-            $jsonEnd = strrpos($output, '}');
-
-            if ($jsonStart !== false && $jsonEnd !== false) {
-                $jsonStr = substr($output, $jsonStart, $jsonEnd - $jsonStart + 1);
-                $result = json_decode($jsonStr, true);
-                if (json_last_error() !== JSON_ERROR_NONE) {
-                    $jsonError = json_last_error_msg();
-                    error_log("JSON Parse Error: " . $jsonError);
-                    error_log("Invalid JSON String (first 1000 chars): " . substr($jsonStr, 0, 1000));
-
-                    // Guardar JSON problemático en archivo para debugging
-                    $debugFile = __DIR__ . '/../logs/ocr_json_error_' . $facturaId . '_' . time() . '.txt';
-                    @file_put_contents($debugFile, "JSON Error: " . $jsonError . "\n\nFull JSON:\n" . $jsonStr . "\n\nStderr:\n" . $stderr);
-
-                    $errorMsg = "Error parseando JSON: " . $jsonError;
-                    $errorMsg .= "\n\nPrimeros 500 caracteres del JSON:\n" . substr($jsonStr, 0, 500);
-
-                    if (!empty($stderr)) {
-                        $errorMsg .= "\n\nStderr:\n" . $stderr;
-                    }
-
-                    $errorMsg .= "\n\nJSON completo guardado en: " . basename($debugFile);
-
-                    throw new Exception($errorMsg);
-                }
-            } else {
-                error_log("No JSON found in output. Full output: " . $output);
-                $errorMsg = "Error de respuesta: No se encontró un objeto JSON válido.";
-                $errorMsg .= "\n\nSalida (primeros 500 chars):\n" . substr($output, 0, 500);
-                if (!empty($stderr)) {
-                    $errorMsg .= "\n\nStderr:\n" . $stderr;
-                }
-                throw new Exception($errorMsg);
-            }
-
+            // Verificar respuesta
             if (!$result || !isset($result['success'])) {
-                $errorMsg = 'Respuesta inválida o truncada del script Python.';
-                if (!empty($stderr)) {
-                    $errorMsg .= "\n\nStderr:\n" . $stderr;
-                }
-                throw new Exception($errorMsg);
+                throw new Exception('Respuesta inválida del microservicio OCR');
             }
 
             if (!$result['success']) {
                 $errorMsg = $result['error'] ?? 'Error desconocido en OCR';
-                if (!empty($stderr)) {
-                    $errorMsg .= "\n\nDetalles técnicos:\n" . $stderr;
-                }
                 throw new Exception($errorMsg);
             }
+
+            // El resultado ya viene parseado del microservicio
 
             $facturasDetectadas = $result['facturas'] ?? [];
             if (empty($facturasDetectadas)) {
@@ -344,38 +333,12 @@ class OCRService
             // Actualizar estado
             $this->db->update('facturas', ['estado' => 'procesando'], ['id' => $facturaId]);
 
-            // Ejecutar script Python con contexto (corroboración)
-            $jsonContext = json_encode($context, JSON_UNESCAPED_UNICODE);
-            $jsonContext = addslashes($jsonContext);
+            // Llamar al microservicio OCR con contexto para corroboración
+            $result = $this->callOCRService($filePath, $context);
 
-            $command = sprintf(
-                '"%s" "%s" "%s" "%s" "%s" 2>&1',
-                $this->pythonPath,
-                $this->scriptPath,
-                $filePath,
-                $this->apiKey,
-                $jsonContext
-            );
-
-            $output = shell_exec($command);
-
-            if ($output === null) {
-                throw new Exception('Error ejecutando script Python para corroboración');
-            }
-
-            // Limpiar salida para encontrar solo el JSON
-            $jsonStart = strpos($output, '{');
-            $jsonEnd = strrpos($output, '}');
-
-            if ($jsonStart !== false && $jsonEnd !== false) {
-                $jsonStr = substr($output, $jsonStart, $jsonEnd - $jsonStart + 1);
-                $result = json_decode($jsonStr, true);
-            } else {
-                throw new Exception("Error en corroboración: No se encontró respuesta JSON válida.");
-            }
-
+            // Verificar respuesta
             if (!$result || !isset($result['success'])) {
-                throw new Exception('Respuesta inválida o truncada en corroboración.');
+                throw new Exception('Respuesta inválida del microservicio OCR en corroboración');
             }
 
             if (!$result['success']) {

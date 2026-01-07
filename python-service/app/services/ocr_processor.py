@@ -2,6 +2,7 @@
 OCR Processor Module
 Módulo de procesamiento OCR para el microservicio FastAPI
 Utiliza OpenAI Vision para extraer datos de facturas aduaneras
+Version: 1.0.1 - Updated OpenAI library to 1.54.0
 """
 
 import sys
