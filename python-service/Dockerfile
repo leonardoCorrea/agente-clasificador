@@ -24,4 +24,5 @@ ENV ALLOWED_ORIGINS="*"
 ENV MAX_FILE_SIZE=10485760
 
 # Comando para ejecutar la aplicación
+# Railway mapeará automáticamente el puerto 8000 al puerto público
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

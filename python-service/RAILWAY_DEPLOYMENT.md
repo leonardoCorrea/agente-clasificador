@@ -29,7 +29,7 @@ git commit -m "Initial commit with OCR microservice"
 ### 1.3 Conectar y Subir
 
 ```bash
-git remote add origin https://github.com/TU-USUARIO/agente-clasificador.git
+git remote add origin https://github.com/leonardoCorrea/agente-clasificador.git
 git branch -M main
 git push -u origin main
 ```
