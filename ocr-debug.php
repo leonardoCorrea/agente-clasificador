@@ -13,7 +13,8 @@ $processUrl = 'https://agente-clasificador-production.up.railway.app/api/ocr/pro
 $results = [];
 $logs = [];
 
-function addLog($msg, $type = 'info') {
+function addLog($msg, $type = 'info')
+{
     global $logs;
     $logs[] = ['msg' => $msg, 'type' => $type, 'time' => date('H:i:s')];
 }
@@ -22,13 +23,19 @@ function addLog($msg, $type = 'info') {
 if (isset($_POST['action']) && $_POST['action'] === 'check_version') {
     $target = 'https://agente-clasificador-production.up.railway.app/api/ocr/status';
     addLog("Checking Version at: $target");
-    
+
+    // Check local API Key Integrity
+    $key = OPENAI_API_KEY;
+    $len = strlen($key);
+    $masked = $len > 10 ? substr($key, 0, 8) . '...' . substr($key, -4) : 'TOO SHORT';
+    addLog("Local API Key Check: Length=$len, Format=$masked");
+
     $ch = curl_init($target);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     $response = curl_exec($ch);
     $info = curl_getinfo($ch);
     curl_close($ch);
-    
+
     addLog("Raw Status Response: " . $response);
     $decoded = json_decode($response, true);
     if (isset($decoded['build_id'])) {
@@ -77,7 +84,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'test_health') {
 // Action: Process Test File
 if (isset($_POST['action']) && $_POST['action'] === 'process_test') {
     addLog("Sending file to OCR service: $processUrl");
-    
+
     if (!file_exists($testFile)) {
         addLog("Cannot process: file not found", "danger");
     } else {
@@ -123,20 +130,54 @@ if (isset($_POST['action']) && $_POST['action'] === 'process_test') {
 ?>
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
     <meta charset="UTF-8">
     <title>OCR Debug Console</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        body { background: #f8f9fa; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        .console { background: #212529; color: #f8f9fa; padding: 20px; border-radius: 8px; font-family: 'Courier New', Courier, monospace; min-height: 400px; max-height: 600px; overflow-y: auto; }
-        .log-time { color: #6c757d; font-size: 0.8em; margin-right: 10px; }
-        .log-info { color: #0dcaf0; }
-        .log-success { color: #198754; font-weight: bold; }
-        .log-warning { color: #ffc107; }
-        .log-danger { color: #dc3545; font-weight: bold; }
+        body {
+            background: #f8f9fa;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        .console {
+            background: #212529;
+            color: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            font-family: 'Courier New', Courier, monospace;
+            min-height: 400px;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .log-time {
+            color: #6c757d;
+            font-size: 0.8em;
+            margin-right: 10px;
+        }
+
+        .log-info {
+            color: #0dcaf0;
+        }
+
+        .log-success {
+            color: #198754;
+            font-weight: bold;
+        }
+
+        .log-warning {
+            color: #ffc107;
+        }
+
+        .log-danger {
+            color: #dc3545;
+            font-weight: bold;
+        }
     </style>
 </head>
+
 <body class="p-4">
     <div class="container">
         <div class="card shadow">
@@ -151,21 +192,26 @@ if (isset($_POST['action']) && $_POST['action'] === 'process_test') {
                     <div class="col-md-12">
                         <h5>Acciones de Diagnóstico</h5>
                         <form method="POST" class="d-flex gap-2">
-                            <button name="action" value="check_version" class="btn btn-warning">1. Verificar Versión en Producción</button>
-                            <button name="action" value="test_health" class="btn btn-info text-white">2. Probar Conexión (Health)</button>
-                            <button name="action" value="process_test" class="btn btn-success">3. Procesar Factura Específica</button>
+                            <button name="action" value="check_version" class="btn btn-warning">1. Verificar Versión en
+                                Producción</button>
+                            <button name="action" value="test_health" class="btn btn-info text-white">2. Probar Conexión
+                                (Health)</button>
+                            <button name="action" value="process_test" class="btn btn-success">3. Procesar Factura
+                                Específica</button>
                         </form>
                     </div>
                 </div>
 
                 <div class="console mt-3">
                     <?php if (empty($logs)): ?>
-                        <div class="text-muted">Esperando acciones... Haz clic en "Verificar Versión en Producción" para empezar.</div>
+                        <div class="text-muted">Esperando acciones... Haz clic en "Verificar Versión en Producción" para
+                            empezar.</div>
                     <?php endif; ?>
                     <?php foreach ($logs as $log): ?>
                         <div class="mb-1">
                             <span class="log-time">[<?php echo $log['time']; ?>]</span>
-                            <span class="log-<?php echo $log['type']; ?>"><?php echo htmlspecialchars($log['msg']); ?></span>
+                            <span
+                                class="log-<?php echo $log['type']; ?>"><?php echo htmlspecialchars($log['msg']); ?></span>
                         </div>
                     <?php endforeach; ?>
                 </div>
@@ -173,4 +219,5 @@ if (isset($_POST['action']) && $_POST['action'] === 'process_test') {
         </div>
     </div>
 </body>
+
 </html>
