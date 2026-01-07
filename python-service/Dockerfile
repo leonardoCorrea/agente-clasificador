@@ -11,11 +11,12 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copiar requirements e instalar dependencias Python
-COPY requirements.txt .
+# Nota: El contexto de build es la raíz del repo, así que copiamos desde python-service/
+COPY python-service/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copiar código de la aplicación
-COPY app/ ./app/
+COPY python-service/app/ ./app/
 
 # Exponer puerto
 EXPOSE 8000
