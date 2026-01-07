@@ -16,6 +16,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copiar código de la aplicación
 COPY python-service/app/ ./app/
 
+# Copiar script de inicio
+COPY python-service/start.sh .
+RUN chmod +x start.sh
+
 # Exponer puerto
 EXPOSE 8000
 
@@ -23,6 +27,6 @@ EXPOSE 8000
 ENV ALLOWED_ORIGINS="*"
 ENV MAX_FILE_SIZE=10485760
 
-# Comando para ejecutar la aplicación
-# Railway mapeará automáticamente el puerto 8000 al puerto público
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Comando para ejecutar la aplicación usando el script de inicio
+# El script leerá la variable PORT de Railway
+CMD ["./start.sh"]

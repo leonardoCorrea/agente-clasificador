@@ -46,3 +46,12 @@ async def health_check():
         "service": settings.APP_TITLE,
         "version": settings.APP_VERSION
     }
+
+
+# Startup event para logging
+@app.on_event("startup")
+async def startup_event():
+    import os
+    port = os.getenv("PORT", "8000")
+    print(f"🚀 Application starting on port {port}")
+    print(f"📝 Allowed origins: {settings.allowed_origins_list}")
