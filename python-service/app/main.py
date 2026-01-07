@@ -23,12 +23,15 @@ app.add_middleware(
 app.include_router(ocr.router, prefix="/api/ocr", tags=["OCR"])
 
 
+from app.services.ocr_processor import BUILD_ID
+
 @app.get("/")
 async def root():
     """Endpoint raíz"""
     return {
         "service": settings.APP_TITLE,
         "version": settings.APP_VERSION,
+        "build_id": BUILD_ID,
         "status": "running",
         "endpoints": {
             "health": "/health",
@@ -44,6 +47,7 @@ async def health_check():
     return {
         "status": "healthy",
         "service": settings.APP_TITLE,
+        "build_id": BUILD_ID,
         "version": settings.APP_VERSION
     }
 

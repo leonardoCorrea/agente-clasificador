@@ -1,15 +1,16 @@
-"""
-OCR Processor Module
-Módulo de procesamiento OCR para el microservicio FastAPI
-Utiliza OpenAI Vision para extraer datos de facturas aduaneras
-Version: 1.0.1 - Updated OpenAI library to 1.54.0
-"""
-
-import sys
-import json
-import base64
-import os
 from openai import OpenAI
+import httpx
+import traceback
+import os
+
+# ID DE VERSIÓN ÚNICO PARA TRACKING DE DESPLIEGUE
+BUILD_ID = "2026-01-07-v4-DIRECT-HTTP-FIX"
+
+# SOLUCIÓN RADICAL PARA ERROR 'proxies':
+# Limpiar variables de entorno de proxy que pueden confundir a httpx/openai
+for env_var in ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'http_proxy', 'https_proxy', 'all_proxy']:
+    if env_var in os.environ:
+        del os.environ[env_var]
 
 
 def encode_image(image_path):
@@ -65,13 +66,21 @@ def repair_truncated_json(json_str):
     
     return json_str
 
+# Eliminar imports redundantes que moví arriba
+
 def process_ocr(file_path, api_key, context=None):
     """
     Procesar OCR o Corroboración usando Vision Multi.
     Soporta múltiples páginas y múltiples facturas por archivo.
     """
     try:
-        client = OpenAI(api_key=api_key)
+        # Inicializar cliente con timeout explícito
+        # Evitamos pasar 'http_client' para que use el default interno sin proxies (ya limpios arriba)
+        client = OpenAI(
+            api_key=api_key,
+            timeout=300.0,
+            max_retries=3
+        )
         
         # Determinar si es PDF o imagen
         ext = file_path.lower().split('.')[-1]
@@ -332,6 +341,7 @@ def process_ocr(file_path, api_key, context=None):
         # IMPORTANTE: Sanitizar todo el resultado antes de retornar
         final_result = {
             'success': True,
+            'build_id': BUILD_ID,
             'facturas': sanitize_for_json(facturas_list),
             'metodo': 'intelligent-ocr-engine' if not context else 'intelligent-ocr-verified'
         }
@@ -339,9 +349,11 @@ def process_ocr(file_path, api_key, context=None):
         return final_result
 
     except Exception as e:
+        error_trace = traceback.format_exc()
         return {
             'success': False,
-            'error': str(e)
+            'build_id': BUILD_ID,
+            'error': f"{str(e)}\n\n--- PYTHON STACK TRACE ---\n{error_trace}"
         }
 
 def clean_amount(value):

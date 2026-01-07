@@ -1,5 +1,5 @@
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
-from app.services.ocr_processor import process_ocr
+from app.services.ocr_processor import process_ocr, BUILD_ID
 from app.config import settings
 import tempfile
 import os
@@ -94,6 +94,7 @@ async def get_status():
     """Obtener estado del servicio OCR"""
     return {
         "status": "operational",
+        "build_id": BUILD_ID,
         "max_file_size_mb": settings.MAX_FILE_SIZE / 1024 / 1024,
         "supported_formats": ["PDF", "JPG", "JPEG", "PNG"]
     }

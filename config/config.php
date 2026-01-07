@@ -59,8 +59,10 @@ define('MAX_FILE_SIZE', env('MAX_FILE_SIZE', 10485760)); // 10MB por defecto
 // ============================================================================
 // URL del microservicio OCR (FastAPI)
 if (IS_PRODUCTION) {
-    define('OCR_SERVICE_URL', env('OCR_SERVICE_URL_PROD', 'https://your-service.railway.app'));
+    // Hardcoded para producción - Railway
+    define('OCR_SERVICE_URL', 'https://agente-clasificador-production.up.railway.app');
 } else {
+    // Desarrollo local
     define('OCR_SERVICE_URL', env('OCR_SERVICE_URL_DEV', 'http://localhost:8000'));
 }
 

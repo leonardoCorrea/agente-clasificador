@@ -31,9 +31,16 @@ class OCRService
         $attempt = 0;
         $lastError = null;
 
+        // Log para debugging
+        error_log("OCR Microservice - URL: " . $this->ocrServiceUrl);
+        error_log("OCR Microservice - File: " . $filePath);
+
         while ($attempt < $maxRetries) {
             try {
-                $ch = curl_init($this->ocrServiceUrl . '/api/ocr/process');
+                $url = $this->ocrServiceUrl . '/api/ocr/process';
+                error_log("OCR Microservice - Calling: " . $url);
+
+                $ch = curl_init($url);
 
                 $postFields = [
                     'file' => new CURLFile($filePath),
@@ -60,6 +67,10 @@ class OCRService
                 $curlError = curl_error($ch);
                 curl_close($ch);
 
+                // Log detallado de la respuesta
+                error_log("OCR Microservice - HTTP Code: " . $httpCode);
+                error_log("OCR Microservice - Response (first 500 chars): " . substr($response, 0, 500));
+
                 if ($curlError) {
                     throw new Exception("Error de conexión con microservicio OCR: " . $curlError);
                 }
@@ -74,6 +85,7 @@ class OCRService
                     throw new Exception("Respuesta inválida del microservicio OCR: " . json_last_error_msg());
                 }
 
+                error_log("OCR Microservice - Success!");
                 return $result;
 
             } catch (Exception $e) {

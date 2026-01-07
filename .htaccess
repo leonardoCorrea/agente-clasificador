@@ -45,6 +45,12 @@
     php_value max_execution_time 60
     php_value max_input_time 60
     php_value memory_limit 256M
+    
+    # Error logging
+    php_flag display_errors Off
+    php_flag log_errors On
+    php_value error_log /home/lcorrea/ticosoftcr.com/agenteClasificador/error_log
+    php_value error_reporting 32767
 </IfModule>
 
 # Compresión GZIP
