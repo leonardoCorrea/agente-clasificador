@@ -1,6 +1,11 @@
-<?php
 require_once '../config/config.php';
 requireAuth();
+
+// Prevenir timeouts en procesos largos de OCR
+@set_time_limit(0);
+@ini_set('max_execution_time', 0);
+@header('X-Accel-Buffering: no');
+@ini_set('memory_limit', '512M');
 
 $invoice = new Invoice();
 $ocrService = new OCRService();
@@ -9,47 +14,59 @@ $message = '';
 $messageType = '';
 $errorDetails = '';
 
+// Manejar mensajes de redirección (para retries manuales)
+if (isset($_GET['message'])) {
+    $message = $_GET['message'];
+    $messageType = $_GET['type'] ?? 'info';
+    
+    // Si hay detalles técnicos en sesión, recuperarlos
+    if (isset($_SESSION['ocr_error_details'])) {
+        $errorDetails = $_SESSION['ocr_error_details'];
+        unset($_SESSION['ocr_error_details']); // Limpiar para la próxima
+    }
+}
+
 // Procesar carga de factura
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['factura'])) {
-    try {
-        $result = $invoice->create($_SESSION['user_id'], $_FILES['factura']);
+try {
+$result = $invoice->create($_SESSION['user_id'], $_FILES['factura']);
 
-        if ($result['success']) {
-            $facturaId = $result['factura_id'];
+if ($result['success']) {
+$facturaId = $result['factura_id'];
 
-            // Procesar OCR automáticamente
-            try {
-                $ocrResult = $ocrService->processInvoice($facturaId);
+// Procesar OCR automáticamente
+try {
+$ocrResult = $ocrService->processInvoice($facturaId);
 
-                if ($ocrResult['success']) {
-                    $message = 'Factura cargada y procesada con OCR exitosamente';
-                    $messageType = 'success';
-                } else {
-                    $message = 'Factura cargada pero error en OCR: ' . $ocrResult['message'];
-                    $messageType = 'warning';
+if ($ocrResult['success']) {
+$message = 'Factura cargada y procesada con OCR exitosamente';
+$messageType = 'success';
+} else {
+$message = 'Factura cargada pero error en OCR: ' . $ocrResult['message'];
+$messageType = 'warning';
 
-                    // Capturar detalles adicionales del error si existen
-                    if (isset($ocrResult['error_details'])) {
-                        $errorDetails = $ocrResult['error_details'];
-                    }
-                    if (isset($ocrResult['stderr'])) {
-                        $errorDetails .= "\n\nError Output:\n" . $ocrResult['stderr'];
-                    }
-                }
-            } catch (Exception $e) {
-                $message = 'Error al procesar OCR: ' . $e->getMessage();
-                $messageType = 'danger';
-                $errorDetails = "Excepción capturada:\n" . $e->getTraceAsString();
-            }
-        } else {
-            $message = $result['message'];
-            $messageType = 'danger';
-        }
-    } catch (Exception $e) {
-        $message = 'Error al cargar factura: ' . $e->getMessage();
-        $messageType = 'danger';
-        $errorDetails = "Excepción capturada:\n" . $e->getTraceAsString();
-    }
+// Capturar detalles adicionales del error si existen
+if (isset($ocrResult['error_details'])) {
+$errorDetails = $ocrResult['error_details'];
+}
+if (isset($ocrResult['stderr'])) {
+$errorDetails .= "\n\nError Output:\n" . $ocrResult['stderr'];
+}
+}
+} catch (Exception $e) {
+$message = 'Error al procesar OCR: ' . $e->getMessage();
+$messageType = 'danger';
+$errorDetails = "Excepción capturada:\n" . $e->getTraceAsString();
+}
+} else {
+$message = $result['message'];
+$messageType = 'danger';
+}
+} catch (Exception $e) {
+$message = 'Error al cargar factura: ' . $e->getMessage();
+$messageType = 'danger';
+$errorDetails = "Excepción capturada:\n" . $e->getTraceAsString();
+}
 }
 
 // Obtener facturas del usuario
@@ -221,13 +238,18 @@ $facturas = $invoice->getAll(['usuario_id' => $_SESSION['user_id']], 20);
                                                 <td><?php echo $f['total_items'] ?? 0; ?></td>
                                                 <td>
                                                     <a href="view-ocr.php?id=<?php echo $f['id']; ?>"
-                                                        class="btn btn-sm btn-info">
-                                                        <i class="fas fa-eye"></i> Ver OCR
+                                                        class="btn btn-sm btn-outline-info" title="Ver Resultados">
+                                                        <i class="fas fa-eye"></i>
                                                     </a>
                                                     <?php if ($f['estado'] === 'ocr_completado'): ?>
                                                         <a href="auto-digitize.php?factura_id=<?php echo $f['id']; ?>"
                                                             class="btn btn-sm btn-success">
                                                             <i class="fas fa-arrow-right"></i> Digitalizar
+                                                        </a>
+                                                    <?php elseif (in_array($f['estado'], ['pendiente', 'error', 'procesando', 'pendiente_ocr'])): ?>
+                                                        <a href="process-ocr-single.php?id=<?php echo $f['id']; ?>"
+                                                            class="btn btn-sm btn-primary btn-process-ocr" title="Procesar OCR Manualmente">
+                                                            <i class="fas fa-microchip"></i> Procesar OCR
                                                         </a>
                                                     <?php endif; ?>
                                                 </td>
@@ -264,7 +286,14 @@ $facturas = $invoice->getAll(['usuario_id' => $_SESSION['user_id']], 20);
 
         // Mostrar spinner al enviar formulario
         document.getElementById('uploadForm').addEventListener('submit', function () {
-            app.showSpinner('Cargando y procesando factura con OCR...');
+            app.showSpinner('Cargando y procesando factura con OCR (esto puede tardar hasta 1 minuto)...');
+        });
+
+        // Mostrar spinner al procesar manualmente
+        document.querySelectorAll('.btn-process-ocr').forEach(btn => {
+            btn.addEventListener('click', function() {
+                app.showSpinner('Procesando factura con IA Vision... por favor espere.');
+            });
         });
     </script>
 </body>
