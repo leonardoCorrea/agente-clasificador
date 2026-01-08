@@ -109,8 +109,11 @@ class OCRService
      */
     public function processInvoice($facturaId)
     {
-        set_time_limit(600); // Aumentar a 10 minutos para procesos de multi-factura
-        ignore_user_abort(true); // Continuar procesando aunque el cliente desconecte
+        // Optimizaciones extremas para evitar timeouts del servidor (Litespeed/Apache)
+        @set_time_limit(0);
+        @ini_set('max_execution_time', 0);
+        @header('X-Accel-Buffering: no');
+        ignore_user_abort(true);
 
         try {
             // Obtener información de la factura

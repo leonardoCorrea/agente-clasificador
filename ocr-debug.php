@@ -6,6 +6,12 @@
 require_once 'config/config.php';
 requireAuth();
 
+// Prevenir timeouts de PHP y avisar al servidor (Litespeed/Nginx)
+set_time_limit(0);
+header('X-Accel-Buffering: no'); // Para Nginx
+@ini_set('max_execution_time', 0);
+@ini_set('memory_limit', '512M');
+
 $testFile = '/home/lcorrea/ticosoftcr.com/agenteClasificador/uploads/factura_694abdf31a5fa.pdf';
 $remoteUrl = 'https://agente-clasificador-production.up.railway.app/api/ocr/status';
 $processUrl = 'https://agente-clasificador-production.up.railway.app/api/ocr/process';

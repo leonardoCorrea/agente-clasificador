@@ -7,7 +7,7 @@ import httpx
 from openai import OpenAI
 
 # ID DE VERSIÓN ÚNICO PARA TRACKING DE DESPLIEGUE
-BUILD_ID = "2026-01-07-v5-IMPORT-FIX-FINAL"
+BUILD_ID = "2026-01-07-v6-TIMEOUT-AUTH-STABLE"
 
 # SOLUCIÓN RADICAL PARA ERROR 'proxies':
 for env_var in ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'http_proxy', 'https_proxy', 'all_proxy']:
