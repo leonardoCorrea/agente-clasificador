@@ -154,12 +154,23 @@ class OCRService
 
             $facturasDetectadas = $result['facturas'] ?? [];
             if (empty($facturasDetectadas)) {
-                throw new Exception('No se detectaron facturas en el documento.');
+                // Fallback: si no hay array 'facturas', intentar ver si result es la factura
+                if (isset($result['datos_estructurados']) || isset($result['numero_factura'])) {
+                    $facturasDetectadas = [$result];
+                } else {
+                    throw new Exception('No se detectaron facturas en el documento.');
+                }
             }
 
             $count = 0;
-            foreach ($facturasDetectadas as $index => $dataFactura) {
+            foreach ($facturasDetectadas as $index => $rawFactura) {
                 $currentFacturaId = $facturaId;
+
+                // Extraer datos estructurados de forma segura
+                // Si la factura ya viene con 'datos_estructurados', perfecto. 
+                // Si no, asumimos que rawFactura contiene los datos directamente.
+                $datosE = $rawFactura['datos_estructurados'] ?? $rawFactura;
+                $textoCompleto = $rawFactura['texto_completo'] ?? ($rawFactura['texto_extraido'] ?? '');
 
                 // Si es la segunda factura o posterior, crear un nuevo registro
                 if ($index > 0) {
@@ -179,67 +190,69 @@ class OCRService
                 // Guardar resultados OCR para esta factura específica
                 $ocrData = [
                     'factura_id' => $currentFacturaId,
-                    'texto_extraido' => $dataFactura['texto_completo'] ?? '',
-                    'datos_estructurados' => json_encode($dataFactura['datos_estructurados'] ?? []),
-                    'confianza_promedio' => 100, // Nombre corregido según schema.sql
+                    'texto_extraido' => $textoCompleto,
+                    'datos_estructurados' => json_encode($datosE),
+                    'confianza_promedio' => 100,
                     'metodo_ocr' => $result['metodo'] ?? 'vision-multi',
                     'fecha_procesamiento' => date('Y-m-d H:i:s')
                 ];
 
                 $this->db->insert('resultados_ocr', $ocrData);
 
-                // Actualizar info básica de la factura con lo extraído
-                $datosE = $dataFactura['datos_estructurados'] ?? [];
-                $totales = $datosE['totales'] ?? [];
+                // Mapear campos de la factura
+                $totales = $datosE['totales'] ?? $datosE;
                 $remitente = $datosE['remitente'] ?? [];
                 $consignatario = $datosE['consignatario'] ?? [];
 
-                $this->db->update('facturas', [
-                    'numero_factura' => $datosE['numero_factura'] ?? null,
-                    'proveedor' => $datosE['proveedor'] ?? null,
-                    'fecha_factura' => $datosE['fecha'] ?? null,
-                    'moneda' => $datosE['moneda'] ?? 'USD',
+                $updateData = [
+                    'numero_factura' => $datosE['numero_factura'] ?? ($datosE['invoice_number'] ?? null),
+                    'proveedor' => $datosE['proveedor'] ?? ($datosE['vendor'] ?? null),
+                    'fecha_factura' => $datosE['fecha'] ?? ($datosE['date'] ?? null),
+                    'moneda' => $datosE['moneda'] ?? ($datosE['currency'] ?? 'USD'),
 
                     // Remitente
-                    'remitente_nombre' => $remitente['nombre'] ?? null,
-                    'remitente_direccion' => $remitente['direccion'] ?? null,
+                    'remitente_nombre' => $remitente['nombre'] ?? ($remitente['name'] ?? null),
+                    'remitente_direccion' => $remitente['direccion'] ?? ($remitente['address'] ?? null),
                     'remitente_contacto' => $remitente['contacto'] ?? null,
                     'remitente_telefono' => $remitente['telefono'] ?? null,
 
                     // Consignatario
-                    'consignatario_nombre' => $consignatario['nombre'] ?? null,
-                    'consignatario_direccion' => $consignatario['direccion'] ?? null,
+                    'consignatario_nombre' => $consignatario['nombre'] ?? ($consignatario['name'] ?? null),
+                    'consignatario_direccion' => $consignatario['direccion'] ?? ($consignatario['address'] ?? null),
                     'consignatario_contacto' => $consignatario['contacto'] ?? null,
-                    'pais_consignatario' => $consignatario['pais'] ?? null,
+                    'pais_consignatario' => $consignatario['pais'] ?? ($consignatario['country'] ?? null),
 
-                    'pais_origen' => $datosE['pais_origen'] ?? null,
+                    'pais_origen' => $datosE['pais_origen'] ?? ($datosE['origin_country'] ?? null),
 
                     // Totales
                     'subtotal' => $this->cleanDecimal($totales['subtotal'] ?? 0),
                     'descuento' => $this->cleanDecimal($totales['descuento'] ?? 0),
-                    'impuesto_calculado' => $this->cleanDecimal($totales['impuesto_monto'] ?? 0),
-                    'impuesto_porcentaje' => $this->cleanDecimal($totales['impuesto_porcentaje'] ?? 0),
-                    'total_final' => $this->cleanDecimal($totales['total_final'] ?? 0),
-                    'total_factura' => $this->cleanDecimal($totales['total_final'] ?? 0), // Keeping backward compatibility
+                    'impuesto_calculado' => $this->cleanDecimal($totales['impuesto_monto'] ?? ($totales['tax_amount'] ?? 0)),
+                    'impuesto_porcentaje' => $this->cleanDecimal($totales['impuesto_porcentaje'] ?? ($totales['tax_percentage'] ?? 0)),
+                    'total_final' => $this->cleanDecimal($totales['total_final'] ?? ($totales['total'] ?? 0)),
+                    'total_factura' => $this->cleanDecimal($totales['total_final'] ?? ($totales['total'] ?? 0)),
 
                     'estado' => 'ocr_completado'
-                ], ['id' => $currentFacturaId]);
+                ];
 
-                // GUARDAR ÍTEMS DE FACTURA (NUEVO)
-                if (!empty($datosE['items'])) {
+                $this->db->update('facturas', $updateData, ['id' => $currentFacturaId]);
+
+                // GUARDAR ÍTEMS DE FACTURA
+                $items = $datosE['items'] ?? [];
+                if (!empty($items)) {
                     $invoiceItem = new InvoiceItem();
-                    foreach ($datosE['items'] as $itemIdx => $item) {
+                    foreach ($items as $itemIdx => $item) {
                         $itemData = [
                             'numero_linea' => $item['numero_linea'] ?? ($itemIdx + 1),
-                            'numero_serie_parte' => $item['numero_serie_parte'] ?? null,
-                            'descripcion' => $item['descripcion'] ?? 'Sin descripción',
+                            'numero_serie_parte' => $item['numero_serie_parte'] ?? ($item['sku'] ?? ($item['part_number'] ?? null)),
+                            'descripcion' => $item['descripcion'] ?? ($item['description'] ?? 'Sin descripción'),
                             'caracteristicas' => $item['caracteristicas'] ?? null,
                             'datos_importantes' => $item['datos_importantes'] ?? null,
-                            'cantidad' => $this->cleanDecimal($item['cantidad'] ?? 0),
-                            'unidad_medida' => $item['unidad_medida'] ?? null,
-                            'precio_unitario' => $this->cleanDecimal($item['precio_unitario'] ?? 0),
-                            'precio_total' => $this->cleanDecimal($item['precio_total'] ?? 0),
-                            'subtotal' => $this->cleanDecimal($item['precio_total'] ?? 0) // Backward compatibility
+                            'cantidad' => $this->cleanDecimal($item['cantidad'] ?? ($item['qty'] ?? 0)),
+                            'unidad_medida' => $item['unidad_medida'] ?? ($item['uom'] ?? null),
+                            'precio_unitario' => $this->cleanDecimal($item['precio_unitario'] ?? ($item['unit_price'] ?? 0)),
+                            'precio_total' => $this->cleanDecimal($item['precio_total'] ?? ($item['line_total'] ?? 0)),
+                            'subtotal' => $this->cleanDecimal($item['precio_total'] ?? ($item['line_total'] ?? 0))
                         ];
                         $invoiceItem->create($currentFacturaId, $itemData);
                     }

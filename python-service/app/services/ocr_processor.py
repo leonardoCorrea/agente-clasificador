@@ -90,19 +90,61 @@ def process_ocr(file_path, api_key, context=None):
             })
 
         if context:
-            system_prompt = """Eres un motor de OCR y validación de datos de alta precisión. 
-            Tu tarea es CORROBORAR si los datos del JSON coinciden EXACTAMENTE con la imagen. Corrígelos si es necesario.
-            Datos actuales: """ + json.dumps(context, ensure_ascii=False)
-            user_prompt = "Devuelve el JSON corregido y completo."
+            system_prompt = """Eres un motor de OCR y validación de datos de alta precisión para facturas aduaneras. 
+            Tu tarea es CORROBORAR si los datos del JSON proporcionado coinciden EXACTAMENTE con las imágenes adjuntas. 
+            Corrige cualquier discrepancia basándote EXCLUSIVAMENTE en lo que ves en las imágenes.
+            
+            Datos actuales para corroborar: """ + json.dumps(context, ensure_ascii=False)
+            user_prompt = "Compara los datos proporcionados con las imágenes y devuelve el JSON corregido siguiendo exactamente el mismo esquema."
         else:
-            system_prompt = """Eres un motor de OCR especializado en facturas. Extrae todos los datos con precisión.
-            REGLAS:
-            1. EXTRACCIÓN COMPLETA DE ÍTEMS.
-            2. NÚMERO DE FACTURA LITERAL.
-            3. DESC. CONCISAS.
-            4. TOTAL_FINAL VERIFICADO.
+            system_prompt = """Eres un motor de OCR de grado industrial especializado en facturas comerciales y documentos de transporte.
+            Tu objetivo es extraer información estructurada con precisión del 100%.
+            
+            ESQUEMA DE RESPUESTA (JSON):
+            {
+              "facturas": [
+                {
+                  "texto_completo": "Todo el texto detectado...",
+                  "datos_estructurados": {
+                    "numero_factura": "ID literal",
+                    "fecha": "YYYY-MM-DD",
+                    "proveedor": "Nombre Empresa Vendedora",
+                    "moneda": "USD, EUR, etc.",
+                    "pais_origen": "País de salida/fabricación",
+                    "remitente": { "nombre": "", "direccion": "", "contacto": "", "telefono": "" },
+                    "consignatario": { "nombre": "", "direccion": "", "contacto": "", "pais": "" },
+                    "items": [
+                      {
+                        "numero_linea": 1,
+                        "numero_serie_parte": "SKU o Part Number",
+                        "descripcion": "Descripción detallada de la mercancía",
+                        "cantidad": 00.00,
+                        "unidad_medida": "PCS, KG, SETS",
+                        "precio_unitario": 00.00,
+                        "precio_total": 00.00,
+                        "caracteristicas": "HS Code, materiales, etc.",
+                        "datos_importantes": "Cualquier otra info técnica"
+                      }
+                    ],
+                    "totales": {
+                      "subtotal": 0.0,
+                      "descuento": 0.0,
+                      "impuesto_monto": 0.0,
+                      "impuesto_porcentaje": 0.0,
+                      "total_final": 0.0
+                    }
+                  }
+                }
+              ]
+            }
+
+            REGLAS CRÍTICAS:
+            1. Si hay múltiples facturas en el mismo archivo, genera un objeto por cada una en el array "facturas".
+            2. Extrae TODOS los ítems de la tabla. No omitas ninguno.
+            3. Si un dato no existe, usa null o cadena vacía, pero mantén la estructura.
+            4. Los números deben ser numéricos (no strings si es posible) o strings limpios de símbolos.
             """
-            user_prompt = "Analiza las imágenes y extrae la información en JSON."
+            user_prompt = "Analiza detalladamente las imágenes y extrae toda la información en el formato JSON solicitado."
 
         response = client.chat.completions.create(
             model="gpt-4o",
@@ -111,7 +153,7 @@ def process_ocr(file_path, api_key, context=None):
                 {"role": "user", "content": [{"type": "text", "text": user_prompt}, *image_contents]}
             ],
             response_format={"type": "json_object"},
-            max_tokens=4000
+            max_tokens=4096
         )
         
         content = response.choices[0].message.content
