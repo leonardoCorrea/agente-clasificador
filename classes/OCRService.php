@@ -38,6 +38,7 @@ class OCRService
         while ($attempt < $maxRetries) {
             try {
                 $url = $this->ocrServiceUrl . '/api/ocr/process';
+                $startTime = microtime(true);
                 error_log("OCR Microservice - Calling: " . $url);
 
                 $ch = curl_init($url);
@@ -63,12 +64,14 @@ class OCRService
                 ]);
 
                 $response = curl_exec($ch);
+                $duration = microtime(true) - $startTime;
+
                 $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
                 $curlError = curl_error($ch);
                 curl_close($ch);
 
                 // Log detallado de la respuesta
-                error_log("OCR Microservice - HTTP Code: " . $httpCode);
+                error_log("OCR Microservice - Request finished in " . round($duration, 2) . " seconds. HTTP Code: " . $httpCode);
                 error_log("OCR Microservice - Response (first 500 chars): " . substr($response, 0, 500));
 
                 if ($curlError) {

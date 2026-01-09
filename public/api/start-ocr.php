@@ -22,9 +22,16 @@ if (!$facturaId) {
     exit;
 }
 
-// 1. Preparar la respuesta inmediata
+// 1. Preparar la respuesta inmediata y desvincular el proceso
+if (ob_get_level())
+    ob_end_clean();
+ignore_user_abort(true);
+set_time_limit(0);
+
 ob_start();
 header('Content-Type: application/json');
+header('Connection: close');
+header('Content-Encoding: none');
 echo json_encode([
     'success' => true,
     'message' => 'Procesamiento iniciado en segundo plano',
@@ -32,35 +39,46 @@ echo json_encode([
 ]);
 $size = ob_get_length();
 header("Content-Length: $size");
-header("Connection: close");
 ob_end_flush();
 @ob_flush();
 flush();
-
-// 2. A PARTIR DE AQUÍ EL CLIENTE YA RECIBIÓ LA RESPUESTA
-// Pero el script sigue corriendo en el servidor.
 
 if (function_exists('fastcgi_finish_request')) {
     fastcgi_finish_request();
 }
 
+// 2. A PARTIR DE AQUÍ EL CLIENTE YA RECIBIÓ LA RESPUESTA
+$logFile = BASE_PATH . '/logs/ocr_background.log';
+function logBg($msg)
+{
+    global $logFile, $facturaId;
+    $date = date('Y-m-d H:i:s');
+    file_put_contents($logFile, "[$date][Factura $facturaId] $msg\n", FILE_APPEND);
+}
+
+logBg("Iniciando proceso de fondo...");
+
 // Configuración extrema para procesos largos
-ignore_user_abort(true);
-set_time_limit(0);
 ini_set('max_execution_time', 0);
 ini_set('memory_limit', '512M');
 
 // 3. Ejecutar el OCR real
 try {
     $ocrService = new OCRService();
-    // processInvoice ya actualiza la DB con 'procesando' y luego 'ocr_completado' o 'error'
-    $ocrService->processInvoice($facturaId);
+    logBg("Llamando a OCRService->processInvoice...");
+    $result = $ocrService->processInvoice($facturaId);
+
+    if ($result['success']) {
+        logBg("Éxito: " . $result['message']);
+    } else {
+        logBg("Error en OCRService: " . $result['message']);
+    }
 } catch (Exception $e) {
-    // Si falla aquí, processInvoice ya debería haber puesto el estado en 'error'
-    // Pero por si acaso, lo aseguramos
+    logBg("EXCEPCIÓN CRÍTICA: " . $e->getMessage());
     $db = Database::getInstance();
     $db->update('facturas', [
         'estado' => 'error',
         'observaciones' => 'Error Background: ' . $e->getMessage()
     ], ['id' => $facturaId]);
 }
+logBg("Proceso de fondo finalizado.");

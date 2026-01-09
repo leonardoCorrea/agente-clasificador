@@ -7,7 +7,7 @@ import httpx
 from openai import OpenAI
 
 # ID DE VERSIÓN ÚNICO PARA TRACKING DE DESPLIEGUE
-BUILD_ID = "2026-01-07-v6-TIMEOUT-AUTH-STABLE"
+BUILD_ID = "2026-01-09-v7-LOGGING-DIAGNOSTIC-STABLE"
 
 # SOLUCIÓN RADICAL PARA ERROR 'proxies':
 for env_var in ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'http_proxy', 'https_proxy', 'all_proxy']:
@@ -53,6 +53,7 @@ def process_ocr(file_path, api_key, context=None):
     Procesar OCR o Corroboración usando Vision Multi.
     Soporta múltiples páginas y múltiples facturas por archivo.
     """
+    print(f"DEBUG: Iniciando proceso_ocr para {file_path}")
     try:
         client = OpenAI(
             api_key=api_key,
@@ -65,10 +66,15 @@ def process_ocr(file_path, api_key, context=None):
         base64_images = []
         
         if ext == 'pdf':
+            print(f"DEBUG: Detectado PDF. Abriendo con PyMuPDF...")
             import fitz
             doc = fitz.open(file_path)
-            max_pages = min(len(doc), 15)
+            num_pages = len(doc)
+            print(f"DEBUG: El PDF tiene {num_pages} páginas.")
+            max_pages = min(num_pages, 15)
+            
             for page_num in range(max_pages):
+                print(f"DEBUG: Procesando página {page_num+1}/{max_pages}...")
                 page = doc.load_page(page_num)
                 pix = page.get_pixmap(dpi=130)
                 temp_image = f"{file_path}_p{page_num}.png"
@@ -76,11 +82,13 @@ def process_ocr(file_path, api_key, context=None):
                 base64_images.append(encode_image(temp_image))
                 os.remove(temp_image)
             doc.close()
+            print(f"DEBUG: Conversión de PDF a imágenes completada.")
         else:
+            print(f"DEBUG: Detectada imagen ({ext}).")
             base64_images.append(encode_image(file_path))
         
         image_contents = []
-        for b64 in base64_images:
+        for i, b64 in enumerate(base64_images):
             image_contents.append({
                 "type": "image_url",
                 "image_url": {
@@ -88,8 +96,11 @@ def process_ocr(file_path, api_key, context=None):
                     "detail": "high"
                 }
             })
-
+        
+        print(f"DEBUG: Enviando {len(image_contents)} imágenes a OpenAI (GPT-4o)...")
+        
         if context:
+            print(f"DEBUG: Usando modo CORROBORACIÓN con contexto.")
             system_prompt = """Eres un motor de OCR y validación de datos de alta precisión para facturas aduaneras. 
             Tu tarea es CORROBORAR si los datos del JSON proporcionado coinciden EXACTAMENTE con las imágenes adjuntas. 
             Corrige cualquier discrepancia basándote EXCLUSIVAMENTE en lo que ves en las imágenes.
@@ -97,6 +108,7 @@ def process_ocr(file_path, api_key, context=None):
             Datos actuales para corroborar: """ + json.dumps(context, ensure_ascii=False)
             user_prompt = "Compara los datos proporcionados con las imágenes y devuelve el JSON corregido siguiendo exactamente el mismo esquema."
         else:
+            print(f"DEBUG: Usando modo EXTRACCIÓN DIRECTA.")
             system_prompt = """Eres un motor de OCR de grado industrial especializado en facturas comerciales y documentos de transporte.
             Tu objetivo es extraer información estructurada con precisión del 100%.
             
@@ -157,10 +169,14 @@ def process_ocr(file_path, api_key, context=None):
         )
         
         content = response.choices[0].message.content
+        print(f"DEBUG: Respuesta recibida de OpenAI ({len(content)} caracteres).")
+        
         try:
             result = json.loads(content)
         except:
+            print(f"DEBUG: El JSON de OpenAI parecía truncado, intentando reparar...")
             result = json.loads(repair_truncated_json(content))
+            print(f"DEBUG: JSON reparado exitosamente.")
         
         if "facturas" in result:
             facturas_list = result["facturas"]
@@ -169,7 +185,10 @@ def process_ocr(file_path, api_key, context=None):
         else:
             facturas_list = [result]
 
-        for factura in facturas_list:
+        print(f"DEBUG: Se detectaron {len(facturas_list)} facturas en la respuesta.")
+
+        for i, factura in enumerate(facturas_list):
+            print(f"DEBUG: Corrigiendo datos lógicos de factura {i+1}...")
             correct_invoice_data(factura)
 
         final_result = {
@@ -179,6 +198,7 @@ def process_ocr(file_path, api_key, context=None):
             'metodo': 'intelligent-ocr-engine' if not context else 'intelligent-ocr-verified'
         }
         
+        print(f"DEBUG: Proceso finalizado exitosamente.")
         return final_result
 
     except Exception as e:
