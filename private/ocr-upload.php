@@ -214,6 +214,11 @@ $facturas = $invoice->getAll(['usuario_id' => $_SESSION['user_id']], 20);
                                                     <span class="badge badge-<?php echo $badgeClass; ?>">
                                                         <?php echo ucfirst($f['estado']); ?>
                                                     </span>
+                                                    <?php if ($f['estado'] === 'procesando'): ?>
+                                                        <br>
+                                                        <a href="reset-ocr-status.php?id=<?php echo $f['id']; ?>"
+                                                            class="text-danger" style="font-size: 0.7em;">Reiniciar</a>
+                                                    <?php endif; ?>
                                                 </td>
                                                 <td><?php echo $f['total_items'] ?? 0; ?></td>
                                                 <td>
@@ -292,17 +297,21 @@ $facturas = $invoice->getAll(['usuario_id' => $_SESSION['user_id']], 20);
                             attempts++;
                             app.showSpinner(`Analizando factura con IA... Por favor espera.<br><small class="text-white-50">Intento de verificación: ${attempts}</small><br><small style="font-size: 0.7em; opacity: 0.8;">No cierres esta ventana mientras la IA trabaja.</small>`);
 
-                            fetch(`../public/api/check-ocr-status.php?factura_id=${facturaId}`)
+                            // Timeout de 10 segundos para la consulta de estado
+                            const controller = new AbortController();
+                            const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+                            fetch(`../public/api/check-ocr-status.php?factura_id=${facturaId}`, { signal: controller.signal })
                                 .then(res => {
-                                    // Si no es un status exitoso (ej: timeout de LiteSpeed), simplemente ignoramos este intento
+                                    clearTimeout(timeoutId);
                                     if (!res.ok) {
-                                        console.warn(`Polling: El servidor respondió con status ${res.status}. Reintentando en el próximo ciclo...`);
+                                        console.warn(`Polling: El servidor respondió con status ${res.status}. Reintentando...`);
                                         return null;
                                     }
                                     return res.json();
                                 })
                                 .then(statusData => {
-                                    if (!statusData) return; // Ignorar si hubo error de red/timeout manejado arriba
+                                    if (!statusData) return;
 
                                     if (statusData.estado === 'ocr_completado') {
                                         clearInterval(interval);
@@ -319,9 +328,12 @@ $facturas = $invoice->getAll(['usuario_id' => $_SESSION['user_id']], 20);
                                     }
                                 })
                                 .catch(err => {
-                                    // Error de parseo si no es JSON o error de red
-                                    console.error('Polling error (Parse/Network):', err);
-                                    // Seguimos intentando, el proceso de fondo es el que manda
+                                    clearTimeout(timeoutId);
+                                    if (err.name === 'AbortError') {
+                                        console.warn('Polling: La petición de estado excedió el tiempo de espera. Reintentando...');
+                                    } else {
+                                        console.error('Polling error:', err);
+                                    }
                                 });
                         }, 5000); // Poll cada 5 segundos
                     } else {

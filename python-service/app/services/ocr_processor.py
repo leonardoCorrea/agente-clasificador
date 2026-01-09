@@ -6,6 +6,10 @@ import traceback
 import httpx
 from openai import OpenAI
 
+# Forzar flush en todos los prints para Railway
+import functools
+print = functools.partial(print, flush=True)
+
 # ID DE VERSIÓN ÚNICO PARA TRACKING DE DESPLIEGUE
 BUILD_ID = "2026-01-09-v7-LOGGING-DIAGNOSTIC-STABLE"
 

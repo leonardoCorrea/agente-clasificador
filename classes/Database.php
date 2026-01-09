@@ -105,6 +105,16 @@ class Database
     }
 
     /**
+     * Asegurar que la conexión está activa
+     */
+    private function checkConnection()
+    {
+        if (!$this->isConnected()) {
+            $this->reconnect();
+        }
+    }
+
+    /**
      * Ejecutar consulta SELECT
      * @param string $sql Consulta SQL
      * @param array $params Parámetros para la consulta
@@ -112,6 +122,7 @@ class Database
      */
     public function query($sql, $params = [])
     {
+        $this->checkConnection();
         try {
             $stmt = $this->connection->prepare($sql);
             $stmt->execute($params);
@@ -130,6 +141,7 @@ class Database
      */
     public function queryOne($sql, $params = [])
     {
+        $this->checkConnection();
         try {
             $stmt = $this->connection->prepare($sql);
             $stmt->execute($params);
@@ -148,6 +160,7 @@ class Database
      */
     public function execute($sql, $params = [])
     {
+        $this->checkConnection();
         try {
             $stmt = $this->connection->prepare($sql);
             return $stmt->execute($params);

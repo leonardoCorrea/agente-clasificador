@@ -48,15 +48,25 @@ if (function_exists('fastcgi_finish_request')) {
 }
 
 // 2. A PARTIR DE AQUÍ EL CLIENTE YA RECIBIÓ LA RESPUESTA
-$logFile = BASE_PATH . '/logs/ocr_background.log';
+// Asegurar que existe el directorio de logs
+$logDir = BASE_PATH . '/logs';
+if (!is_dir($logDir)) {
+    @mkdir($logDir, 0777, true);
+}
+
+$logFile = $logDir . '/ocr_background.log';
 function logBg($msg)
 {
     global $logFile, $facturaId;
     $date = date('Y-m-d H:i:s');
-    file_put_contents($logFile, "[$date][Factura $facturaId] $msg\n", FILE_APPEND);
+    $fullMsg = "[$date][Factura $facturaId] $msg\n";
+    file_put_contents($logFile, $fullMsg, FILE_APPEND);
+    // También guardar en el error_log del sistema por si falla file_put_contents
+    error_log("OCR_BG: " . $fullMsg);
 }
 
-logBg("Iniciando proceso de fondo...");
+logBg("Iniciando proceso de fondo. Desvinculado con éxito.");
+logBg("Sesión User ID: " . ($_SESSION['user_id'] ?? 'N/A'));
 
 // Configuración extrema para procesos largos
 ini_set('max_execution_time', 0);
