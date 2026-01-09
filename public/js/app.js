@@ -142,7 +142,7 @@ function initDropzone(elementId, callback) {
 /**
  * Validar archivo
  */
-function validateFile(file, allowedExtensions = ['pdf', 'jpg', 'jpeg', 'png'], maxSize = 10485760) {
+function validateFile(file, allowedExtensions = ['pdf', 'jpg', 'jpeg', 'png'], maxSize = 52428800) {
     const extension = file.name.split('.').pop().toLowerCase();
 
     if (!allowedExtensions.includes(extension)) {
