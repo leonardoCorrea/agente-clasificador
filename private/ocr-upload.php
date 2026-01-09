@@ -297,15 +297,17 @@ $facturas = $invoice->getAll(['usuario_id' => $_SESSION['user_id']], 20);
                             attempts++;
                             app.showSpinner(`Analizando factura con IA... Por favor espera.<br><small class="text-white-50">Intento de verificación: ${attempts}</small><br><small style="font-size: 0.7em; opacity: 0.8;">No cierres esta ventana mientras la IA trabaja.</small>`);
 
-                            // Timeout de 10 segundos para la consulta de estado
+                            // Timeout de 30 segundos para la consulta de estado (más generoso para servers lentos)
                             const controller = new AbortController();
-                            const timeoutId = setTimeout(() => controller.abort(), 10000);
+                            const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+                            console.log(`Polling: Iniciando intento ${attempts} para factura ${facturaId}...`);
 
                             fetch(`../public/api/check-ocr-status.php?factura_id=${facturaId}`, { signal: controller.signal })
                                 .then(res => {
                                     clearTimeout(timeoutId);
+                                    console.log(`Polling: Respuesta recibida (Status: ${res.status})`);
                                     if (!res.ok) {
-                                        console.warn(`Polling: El servidor respondió con status ${res.status}. Reintentando...`);
                                         return null;
                                     }
                                     return res.json();
@@ -314,14 +316,20 @@ $facturas = $invoice->getAll(['usuario_id' => $_SESSION['user_id']], 20);
                                     if (!statusData) return;
 
                                     if (statusData.estado === 'ocr_completado') {
+                                        console.log('Polling: ¡Completado!');
                                         clearInterval(interval);
                                         app.hideSpinner();
                                         window.location.href = 'ocr-upload.php?message=' + encodeURIComponent('OCR completado con éxito') + '&type=success';
                                     } else if (statusData.estado === 'error') {
+                                        console.log('Polling: Error detectado en el estado');
                                         clearInterval(interval);
                                         app.hideSpinner();
                                         app.showAlert('Error en el procesamiento: ' + (statusData.observaciones || 'Error desconocido'), 'danger');
-                                    } else if (attempts >= maxAttempts) {
+                                    } else {
+                                        console.log('Polling: Estado actual: ' + statusData.estado);
+                                    }
+
+                                    if (attempts >= maxAttempts) {
                                         clearInterval(interval);
                                         app.hideSpinner();
                                         app.showAlert('El procesamiento está tardando más de lo esperado. Por favor, revisa la lista en unos minutos.', 'warning');
@@ -330,12 +338,12 @@ $facturas = $invoice->getAll(['usuario_id' => $_SESSION['user_id']], 20);
                                 .catch(err => {
                                     clearTimeout(timeoutId);
                                     if (err.name === 'AbortError') {
-                                        console.warn('Polling: La petición de estado excedió el tiempo de espera. Reintentando...');
+                                        console.warn('Polling: La petición de estado excedió los 30s. Reintentando...');
                                     } else {
                                         console.error('Polling error:', err);
                                     }
                                 });
-                        }, 5000); // Poll cada 5 segundos
+                        }, 10000); // Poll cada 10 segundos para no saturar
                     } else {
                         app.hideSpinner();
                         app.showAlert(data.message, 'danger');

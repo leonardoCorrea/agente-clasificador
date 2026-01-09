@@ -37,6 +37,8 @@ echo json_encode([
     'message' => 'Procesamiento iniciado en segundo plano',
     'factura_id' => $facturaId
 ]);
+// Padding para forzar el flush en algunos servidores (LiteSpeed/Nginx)
+echo str_pad('', 4096);
 $size = ob_get_length();
 header("Content-Length: $size");
 ob_end_flush();

@@ -11,7 +11,14 @@
  * Mostrar spinner de carga
  */
 function showSpinner(message = 'Procesando...') {
-    const spinner = document.createElement('div');
+    let spinner = document.getElementById('loading-spinner');
+    if (spinner) {
+        const p = spinner.querySelector('p');
+        if (p) p.innerHTML = message;
+        return;
+    }
+
+    spinner = document.createElement('div');
     spinner.id = 'loading-spinner';
     spinner.className = 'spinner-overlay';
     spinner.innerHTML = `
