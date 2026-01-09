@@ -6,9 +6,8 @@
     RewriteEngine On
     RewriteBase /agenteClasificador/
     
-    # Redirigir a HTTPS (descomentar en producción)
-    # RewriteCond %{HTTPS} off
-    # RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+    # Prevenir que LiteSpeed aborte procesos largos (OCR)
+    RewriteRule .* - [E=n_Lsapi_No_Abort:1]
     
     # Prevenir acceso a directorios sensibles
     RewriteRule ^config/ - [F,L]
@@ -40,11 +39,11 @@
 
 # Configuración PHP
 <IfModule mod_php.c>
-    php_value upload_max_filesize 10M
-    php_value post_max_size 10M
-    php_value max_execution_time 60
-    php_value max_input_time 60
-    php_value memory_limit 256M
+    php_value upload_max_filesize 50M
+    php_value post_max_size 50M
+    php_value max_execution_time 600
+    php_value max_input_time 600
+    php_value memory_limit 512M
     
     # Error logging
     php_flag display_errors Off

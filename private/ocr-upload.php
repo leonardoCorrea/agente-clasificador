@@ -28,37 +28,16 @@ if (isset($_GET['message'])) {
 }
 
 // Procesar carga de factura
+$startOcr = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['factura'])) {
     try {
         $result = $invoice->create($_SESSION['user_id'], $_FILES['factura']);
 
         if ($result['success']) {
             $facturaId = $result['factura_id'];
-
-            // Procesar OCR automáticamente
-            try {
-                $ocrResult = $ocrService->processInvoice($facturaId);
-
-                if ($ocrResult['success']) {
-                    $message = 'Factura cargada y procesada con OCR exitosamente';
-                    $messageType = 'success';
-                } else {
-                    $message = 'Factura cargada pero error en OCR: ' . $ocrResult['message'];
-                    $messageType = 'warning';
-
-                    // Capturar detalles adicionales del error si existen
-                    if (isset($ocrResult['error_details'])) {
-                        $errorDetails = $ocrResult['error_details'];
-                    }
-                    if (isset($ocrResult['stderr'])) {
-                        $errorDetails .= "\n\nError Output:\n" . $ocrResult['stderr'];
-                    }
-                }
-            } catch (Exception $e) {
-                $message = 'Error al procesar OCR: ' . $e->getMessage();
-                $messageType = 'danger';
-                $errorDetails = "Excepción capturada:\n" . $e->getTraceAsString();
-            }
+            $startOcr = $facturaId; // Marcar para que JS inicie el OCR
+            $message = 'Factura subida. Iniciando extracción de datos...';
+            $messageType = 'info';
         } else {
             $message = $result['message'];
             $messageType = 'danger';
@@ -286,15 +265,84 @@ $facturas = $invoice->getAll(['usuario_id' => $_SESSION['user_id']], 20);
             }
         });
 
-        // Mostrar spinner al enviar formulario
+        // Mostrar spinner al enviar formulario (solo carga inicial)
         document.getElementById('uploadForm').addEventListener('submit', function () {
-            app.showSpinner('Cargando y procesando factura con OCR (esto puede tardar hasta 1 minuto)...');
+            app.showSpinner('Subiendo archivo al servidor...');
         });
+
+        // Manejar procesamiento OCR asíncrono si el PHP nos da un ID
+        <?php if ($startOcr): ?>
+        (function() {
+            const facturaId = <?php echo $startOcr; ?>;
+            app.showSpinner('Factura subida. Analizando contenido con IA Vision (esta factura es grande, puede tardar hasta 5 minutos)...');
+            
+            const formData = new FormData();
+            formData.append('factura_id', facturaId);
+            
+            fetch('../public/api/process-ocr.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                if (!response.ok) throw new Error('Error en el servidor (' + response.status + ')');
+                return response.json();
+            })
+            .then(data => {
+                app.hideSpinner();
+                if (data.success) {
+                    // Refrescar página con éxito
+                    window.location.href = 'ocr-upload.php?message=' + encodeURIComponent(data.message) + '&type=success';
+                } else {
+                    // Mostrar error detallado
+                    const errorMsg = data.message || 'Error desconocido en OCR';
+                    app.showAlert('Error en OCR: ' + errorMsg, 'danger');
+                    console.error('OCR Error Details:', data.error_details);
+                }
+            })
+            .catch(error => {
+                app.hideSpinner();
+                app.showAlert('Error en el proceso OCR: ' + error.message + '. Por favor, intente procesar manualmente desde la lista.', 'danger');
+                console.error('Fetch Error:', error);
+            });
+        })();
+        <?php endif; ?>
 
         // Mostrar spinner al procesar manualmente
         document.querySelectorAll('.btn-process-ocr').forEach(btn => {
-            btn.addEventListener('click', function () {
-                app.showSpinner('Procesando factura con IA Vision... por favor espere.');
+            btn.addEventListener('click', function (e) {
+                e.preventDefault();
+                const url = this.getAttribute('href');
+                const idMatch = url.match(/id=(\d+)/);
+                
+                if (idMatch) {
+                    const facturaId = idMatch[1];
+                    app.showSpinner('Procesando factura manualmente con IA Vision...');
+                    
+                    const formData = new FormData();
+                    formData.append('factura_id', facturaId);
+                    
+                    fetch('../public/api/process-ocr.php', {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        app.hideSpinner();
+                        if (data.success) {
+                            window.location.href = 'ocr-upload.php?message=' + encodeURIComponent(data.message) + '&type=success';
+                        } else {
+                            app.showAlert(data.message, 'danger');
+                        }
+                    })
+                    .catch(error => {
+                        app.hideSpinner();
+                        app.showAlert('Error al procesar: ' + error.message, 'danger');
+                    });
+                } else {
+                    // Si no es el formato esperado, seguir el link normal
+                    app.showSpinner('Iniciando proceso OCR...');
+                    window.location.href = url;
+                }
             });
         });
     </script>

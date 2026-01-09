@@ -52,7 +52,7 @@ define('APP_VERSION', '1.0.0');
 if (!defined('BASE_PATH')) {
     define('BASE_PATH', dirname(__DIR__));
 }
-define('MAX_FILE_SIZE', env('MAX_FILE_SIZE', 10485760)); // 10MB por defecto
+define('MAX_FILE_SIZE', env('MAX_FILE_SIZE', 52428800)); // 50MB por defecto
 
 // ============================================================================
 // CONFIGURACIÓN DE MICROSERVICIO OCR
