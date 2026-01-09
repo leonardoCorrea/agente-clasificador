@@ -290,11 +290,20 @@ $facturas = $invoice->getAll(['usuario_id' => $_SESSION['user_id']], 20);
 
                         const interval = setInterval(() => {
                             attempts++;
-                            app.showSpinner(`Analizando factura con IA... Por favor espera.<br><small class="text-white-50">Intento de verificación: ${attempts}</small>`);
+                            app.showSpinner(`Analizando factura con IA... Por favor espera.<br><small class="text-white-50">Intento de verificación: ${attempts}</small><br><small style="font-size: 0.7em; opacity: 0.8;">No cierres esta ventana mientras la IA trabaja.</small>`);
 
                             fetch(`../public/api/check-ocr-status.php?factura_id=${facturaId}`)
-                                .then(res => res.json())
+                                .then(res => {
+                                    // Si no es un status exitoso (ej: timeout de LiteSpeed), simplemente ignoramos este intento
+                                    if (!res.ok) {
+                                        console.warn(`Polling: El servidor respondió con status ${res.status}. Reintentando en el próximo ciclo...`);
+                                        return null;
+                                    }
+                                    return res.json();
+                                })
                                 .then(statusData => {
+                                    if (!statusData) return; // Ignorar si hubo error de red/timeout manejado arriba
+
                                     if (statusData.estado === 'ocr_completado') {
                                         clearInterval(interval);
                                         app.hideSpinner();
@@ -310,8 +319,9 @@ $facturas = $invoice->getAll(['usuario_id' => $_SESSION['user_id']], 20);
                                     }
                                 })
                                 .catch(err => {
-                                    console.error('Polling error:', err);
-                                    // No detenemos el intervalo por un error de red momentáneo
+                                    // Error de parseo si no es JSON o error de red
+                                    console.error('Polling error (Parse/Network):', err);
+                                    // Seguimos intentando, el proceso de fondo es el que manda
                                 });
                         }, 5000); // Poll cada 5 segundos
                     } else {

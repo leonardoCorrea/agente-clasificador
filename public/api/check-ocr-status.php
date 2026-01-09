@@ -9,6 +9,9 @@ if (!isAuthenticated()) {
     jsonResponse(['success' => false, 'message' => 'No autorizado'], 401);
 }
 
+// Liberar el bloqueo de sesión para no interferir con otras peticiones concurrentes
+session_write_close();
+
 $facturaId = $_GET['factura_id'] ?? null;
 if (!$facturaId) {
     jsonResponse(['success' => false, 'message' => 'ID de factura no proporcionado'], 400);

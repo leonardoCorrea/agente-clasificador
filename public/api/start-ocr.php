@@ -12,6 +12,9 @@ if (!isAuthenticated()) {
     exit;
 }
 
+// Liberar el bloqueo de sesión inmediatamente para permitir polling concurrente
+session_write_close();
+
 $facturaId = $_POST['factura_id'] ?? null;
 if (!$facturaId) {
     header('Content-Type: application/json');
