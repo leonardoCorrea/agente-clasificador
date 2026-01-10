@@ -63,7 +63,7 @@ def process_ocr(file_path, api_key, context=None):
     try:
         client = OpenAI(
             api_key=api_key,
-            timeout=300.0,
+            timeout=600.0,
             max_retries=3
         )
         
@@ -171,7 +171,7 @@ def process_ocr(file_path, api_key, context=None):
                 {"role": "user", "content": [{"type": "text", "text": user_prompt}, *image_contents]}
             ],
             response_format={"type": "json_object"},
-            max_tokens=4096
+            max_tokens=8000
         )
         
         content = response.choices[0].message.content

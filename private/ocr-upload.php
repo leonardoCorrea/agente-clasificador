@@ -631,7 +631,7 @@ $facturas = $invoice->getAll(['usuario_id' => $_SESSION['user_id']], 20);
                     if (data.success) {
                         console.log("OCR: Respuesta del servidor exitosa, iniciando polling de estado.");
                         let attempts = 0;
-                        const maxAttempts = 150;
+                        const maxAttempts = 40; // Reducido de 150 a pedido del usuario
                         setStep(2);
                         if (mainStatus) mainStatus.textContent = "Analizando el documento...";
 

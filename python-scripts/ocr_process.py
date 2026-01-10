@@ -136,7 +136,7 @@ def process_ocr(file_path, api_key, context=None):
         # Evitamos pasar 'http_client' para que use el default interno sin proxies (ya limpios arriba)
         client = OpenAI(
             api_key=api_key,
-            timeout=300.0,
+            timeout=600.0,
             max_retries=3
         )
         

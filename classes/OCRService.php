@@ -56,7 +56,7 @@ class OCRService
                     CURLOPT_POST => true,
                     CURLOPT_POSTFIELDS => $postFields,
                     CURLOPT_RETURNTRANSFER => true,
-                    CURLOPT_TIMEOUT => 300, // 5 minutos
+                    CURLOPT_TIMEOUT => 600, // 10 minutos (Aumentado para facturas largas)
                     CURLOPT_CONNECTTIMEOUT => 30,
                     CURLOPT_HTTPHEADER => [
                         'Accept: application/json'
