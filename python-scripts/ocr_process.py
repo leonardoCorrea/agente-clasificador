@@ -130,7 +130,10 @@ def process_ocr(file_path, api_key, context=None):
             })
 
         # Definir Prompts según modo
-        if context:
+        # Diferenciar entre Corroboración (tiene 'items' y data completa) vs Extracción con Pistas
+        is_corroboration = context and 'items' in context and isinstance(context['items'], list)
+
+        if is_corroboration:
             system_prompt = """Eres un motor de OCR y validación de datos de alta precisión. 
             Tu tarea es CORROBORAR si los datos del JSON coinciden EXACTAMENTE con la imagen.
             Si hay errores, corrígelos. Si faltan datos, agrégalos. 
@@ -141,6 +144,17 @@ def process_ocr(file_path, api_key, context=None):
             Datos actuales para corroborar: """ + json.dumps(context, ensure_ascii=False)
             user_prompt = "Compara estos datos con las imágenes de la factura y devuelve el JSON corregido y completo (como un array de facturas)."
         else:
+            # Construir instrucción de ítems esperados si existe
+            items_instruction = ""
+            if context and 'items_esperados' in context and int(context['items_esperados']) > 0:
+                count = int(context['items_esperados'])
+                items_instruction = f"""
+            
+            ⚠️ INSTRUCCIÓN PRIORITARIA DEL USUARIO:
+            El usuario ha indicado que este documento tiene EXACTAMENTE {count} LÍNEAS de ítems.
+            Debes esforzarte al máximo por encontrar, separar y extraer {count} ítems individuales.
+            Si detectas menos, revisa si hay líneas con texto en varias filas que deberían ser ítems separados."""
+
             system_prompt = """Eres un motor de OCR especializado en facturas industriales y comerciales de alta complejidad.
             Tu misión es extraer ABSOLUTAMENTE TODOS los datos con precisión quirúrgica.
             
@@ -191,7 +205,7 @@ def process_ocr(file_path, api_key, context=None):
                         }
                     }
                 ]
-            }"""
+            }""" + items_instruction
             user_prompt = "Lee cuidadosamente las imágenes de la factura. Extrae TODOS los ítems de la tabla principal sin excepción. Asegúrate de que el número de objetos en el array 'items' coincida exactamente con el número de líneas físicas en la factura."
 
         # Llamar a Vision Multi con max_tokens optimizado

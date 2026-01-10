@@ -16,7 +16,7 @@ class Invoice
     /**
      * Crear nueva factura
      */
-    public function create($usuarioId, $archivoData)
+    public function create($usuarioId, $archivoData, $extraData = [])
     {
         // Validar archivo
         $validacion = $this->validateFile($archivoData);
@@ -30,16 +30,22 @@ class Invoice
             return $uploadResult;
         }
 
+        // Extraer items esperados (si existe)
+        $itemsEsperados = isset($extraData['items_esperados']) && is_numeric($extraData['items_esperados'])
+            ? (int) $extraData['items_esperados']
+            : null;
+
         // Insertar factura en base de datos
-        $sql = "INSERT INTO facturas (usuario_id, archivo_original, ruta_archivo, tipo_archivo, tamano_archivo, estado) 
-                VALUES (?, ?, ?, ?, ?, 'pendiente')";
+        $sql = "INSERT INTO facturas (usuario_id, archivo_original, ruta_archivo, tipo_archivo, tamano_archivo, estado, items_esperados) 
+                VALUES (?, ?, ?, ?, ?, 'pendiente', ?)";
 
         $result = $this->db->execute($sql, [
             $usuarioId,
             $uploadResult['original_name'],
             $uploadResult['file_path'],
             $uploadResult['file_type'],
-            $uploadResult['file_size']
+            $uploadResult['file_size'],
+            $itemsEsperados
         ]);
 
         if ($result) {

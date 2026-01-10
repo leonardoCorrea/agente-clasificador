@@ -145,10 +145,17 @@ class OCRService
             $result = null;
             $errorDetails = "";
 
+            // Preparar contexto si hay items esperados (Instrucción explícita para la IA)
+            $localContext = null;
+            if (!empty($factura['items_esperados']) && $factura['items_esperados'] > 0) {
+                $localContext = ['items_esperados' => (int) $factura['items_esperados']];
+                error_log("OCRService: Enviando instrucción de búsqueda para {$localContext['items_esperados']} ítems.");
+            }
+
             try {
                 // 1. Intentar Vision AI local (GPT-4o directo) - NUEVA PRIORIDAD
                 error_log("OCRService: Intentando Vision AI local (Prioridad 1)...");
-                $result = $this->callLocalVisionAI($filePath);
+                $result = $this->callLocalVisionAI($filePath, $localContext);
             } catch (Exception $e) {
                 error_log("OCRService: Falló Vision AI local. Intentando fallback a Railway...");
                 $errorDetails .= "Fallback Local Error: " . $e->getMessage() . "\n";

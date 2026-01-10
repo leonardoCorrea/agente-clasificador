@@ -31,7 +31,7 @@ if (isset($_GET['message'])) {
 $startOcr = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['factura'])) {
     try {
-        $result = $invoice->create($_SESSION['user_id'], $_FILES['factura']);
+        $result = $invoice->create($_SESSION['user_id'], $_FILES['factura'], $_POST);
 
         if ($result['success']) {
             $facturaId = $result['factura_id'];
@@ -324,6 +324,16 @@ $facturas = $invoice->getAll(['usuario_id' => $_SESSION['user_id']], 20);
                                 </p>
                                 <input type="file" name="factura" id="fileInput" accept=".pdf,.jpg,.jpeg,.png"
                                     style="display: none;" required>
+                            </div>
+
+                            <div class="mt-4">
+                                <label for="items_esperados" class="form-label text-secondary fw-bold">
+                                    <i class="fas fa-list-ol"></i> ¿Cuántas líneas tiene la factura? (Opcional)
+                                </label>
+                                <input type="number" class="form-control form-control-lg" name="items_esperados"
+                                    id="items_esperados" placeholder="Ej: 26" min="1">
+                                <div class="form-text">Si ingresas el número exacto, la IA se esforzará por encontrar
+                                    esa cantidad.</div>
                             </div>
 
                             <div id="fileInfo" class="mt-3" style="display: none;">
