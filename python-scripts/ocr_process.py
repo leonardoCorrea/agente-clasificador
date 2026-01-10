@@ -49,25 +49,49 @@ def sanitize_for_json(obj):
 
 def repair_truncated_json(json_str):
     """
-    Intenta reparar JSON truncado cerrando strings, arrays y objetos abiertos.
+    Intenta reparar JSON truncado de forma robusta.
+    1. Cierra strings abiertos.
+    2. Elimina comas finales que preceden a un cierre (ej: ...,]).
+    3. Cierra arrays y objetos en orden inverso.
     """
-    # Contar comillas para ver si hay una string sin cerrar
-    quote_count = json_str.count('"') - json_str.count('\\"')
+    # 1. Reparar strings sin cerrar
+    # Contar comillas ignorando las escapadas \"
+    parts = json_str.split('"')
+    quote_count = 0
+    for i in range(len(parts)-1):
+        if not parts[i].endswith('\\'):
+            quote_count += 1
     
-    # Si hay número impar de comillas, cerrar la string
     if quote_count % 2 != 0:
         json_str += '"'
     
-    # Contar llaves y corchetes abiertos
+    # 2. Eliminar comas sueltas al final (muy común en truncamiento)
+    json_str = json_str.strip()
+    if json_str.endswith(','):
+        json_str = json_str[:-1]
+    
+    # 3. Limpiar comas antes de cierres (ej: [1, 2, ])
+    import re
+    json_str = re.sub(r',\s*([\]}])', r'\1', json_str)
+    
+    # 4. Cerrar estructuras abiertas
     open_braces = json_str.count('{') - json_str.count('}')
     open_brackets = json_str.count('[') - json_str.count(']')
     
-    # Cerrar arrays abiertos
-    json_str += ']' * open_brackets
+    # Necesitamos cerrar en el orden correcto. Usar un stack simple:
+    stack = []
+    for char in json_str:
+        if char == '{': stack.append('}')
+        elif char == '[': stack.append(']')
+        elif char == '}': 
+            if stack and stack[-1] == '}': stack.pop()
+        elif char == ']':
+            if stack and stack[-1] == ']': stack.pop()
     
-    # Cerrar objetos abiertos
-    json_str += '}' * open_braces
-    
+    # Cerrar lo que quedó en el stack en orden inverso
+    while stack:
+        json_str += stack.pop()
+        
     return json_str
 
 import httpx
@@ -158,29 +182,32 @@ def process_ocr(file_path, api_key, context=None):
             system_prompt = """Eres un motor de OCR especializado en facturas industriales y comerciales de alta complejidad.
             Tu misión es extraer ABSOLUTAMENTE TODOS los datos con precisión quirúrgica.
             
+            ⚠️ ALERTA DE TRUNCAMIENTO: Si la factura es MUY larga, prioriza extraer TODOS los items del array 'items'. 
+            Puedes ser más breve en los campos 'direccion' o 'contacto' de las secciones remitente/consignatario para ahorrar espacio.
+            
             REGLAS DE EXTRACCIÓN MANDATORIAS:
-            1. **EXTRACCIÓN TOTAL DE ÍTEMS (CRÍTICO):** Si la factura tiene 26 líneas, DEBES devolver 26 objetos en el array 'items'. Si tiene 50, devuelve 50. NO omitas ninguna línea por pequeña que sea. NO agrupes ítems similares.
+            1. **EXTRACCIÓN TOTAL DE ÍTEMS (CRÍTICO):** Si la factura tiene muchos items, DEBES devolver todos en el array 'items'. NO omitas ninguna línea.
             2. **FIDELIDAD DE DATOS:** Extrae las descripciones, cantidades y precios tal cual aparecen.
             3. **RELACIÓN MATEMÁTICA:** Verifica que (Cantidad x Precio Unitario) sea igual al Precio Total de cada línea.
             4. **NÚMERO DE FACTURA:** Busca el identificador único del documento con cuidado.
             5. **ESTRUCTURA:** Devuelve estrictamente el JSON solicitado.
             
             ESQUEMA DE DATOS:
-            - 'descripcion': Hasta 150 caracteres para no perder detalles técnicos.
+            - 'descripcion': Hasta 120 caracteres.
             - 'items': Array completo con todos los productos/servicios detectados.
             
             ESTRUCTURA JSON REQUERIDA:
             {
                 "facturas": [
                     {
-                        "texto_completo": "Resumen ejecutivo breve (número, proveedor, total)",
+                        "texto_completo": "Resumen ejecutivo breve",
                         "datos_estructurados": {
                             "numero_factura": "String",
                             "fecha": "YYYY-MM-DD",
                             "proveedor": "String",
                             "moneda": "USD/EUR/etc",
-                            "remitente": { "nombre": "String", "direccion": "String", "contacto": "String", "telefono": "String" },
-                            "consignatario": { "nombre": "String", "direccion": "String", "contacto": "String", "pais": "String" },
+                            "remitente": { "nombre": "String", "direccion": "String (breve)", "contacto": "String", "telefono": "String" },
+                            "consignatario": { "nombre": "String", "direccion": "String (breve)", "contacto": "String", "pais": "String" },
                             "pais_origen": "String",
                             "totales": {
                                 "subtotal": 0.00,
