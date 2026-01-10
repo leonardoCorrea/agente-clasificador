@@ -137,35 +137,35 @@ class OCRService
                 return ['success' => false, 'message' => 'Archivo no encontrado'];
             }
 
-        // Actualizar estado a procesando
-        $this->db->update('facturas', ['estado' => 'procesando'], ['id' => $facturaId]);
+            // Actualizar estado a procesando
+            $this->db->update('facturas', ['estado' => 'procesando'], ['id' => $facturaId]);
 
-        // --- ESTRATEGIA: Railway primero, luego Fallback Local ---
-        $result = null;
-        $errorDetails = "";
+            // --- ESTRATEGIA: Railway primero, luego Fallback Local ---
+            $result = null;
+            $errorDetails = "";
 
-        try {
-            // 1. Intentar Microservicio en Railway (EL MEJOR)
-            error_log("OCRService: Intentando microservicio Railway...");
-            $result = $this->callOCRService($filePath);
-        } catch (Exception $e) {
-            error_log("OCRService: Falló Railway. Error: " . $e->getMessage());
-            $errorDetails .= "Fallback Railway Error: " . $e->getMessage() . "\n";
-            
             try {
-                // 2. Fallback a Vision AI local (Script Python directo)
-                error_log("OCRService: Iniciando Fallback a Vision AI local...");
-                $result = $this->callLocalVisionAI($filePath);
-            } catch (Exception $e2) {
-                error_log("OCRService: Falló también el fallback local. Error: " . $e2->getMessage());
-                throw new Exception("Fallo total en OCR. Railway: " . $e->getMessage() . " | Local: " . $e2->getMessage());
+                // 1. Intentar Microservicio en Railway (EL MEJOR)
+                error_log("OCRService: Intentando microservicio Railway en " . $this->ocrServiceUrl);
+                $result = $this->callOCRService($filePath);
+            } catch (Exception $e) {
+                error_log("OCRService: Falló Railway. Error: " . $e->getMessage());
+                $errorDetails .= "Fallback Railway Error: " . $e->getMessage() . "\n";
+                
+                try {
+                    // 2. Fallback a Vision AI local (Script Python directo)
+                    error_log("OCRService: Iniciando Fallback a Vision AI local...");
+                    $result = $this->callLocalVisionAI($filePath);
+                } catch (Exception $e2) {
+                    error_log("OCRService: Falló también el fallback local. Error: " . $e2->getMessage());
+                    throw new Exception("Fallo total en OCR. Railway: " . $e->getMessage() . " | Local: " . $e2->getMessage());
+                }
             }
-        }
 
-        // Verificar respuesta final
-        if (!$result || !isset($result['success'])) {
-            throw new Exception('Respuesta inválida del motor de OCR (Fallo en cascada)');
-        }
+            // Verificar respuesta final
+            if (!$result || !isset($result['success'])) {
+                throw new Exception('Respuesta inválida del motor de OCR (Fallo en cascada)');
+            }
 
             if (!$result['success']) {
                 $errorMsg = $result['error'] ?? 'Error desconocido en OCR';
@@ -380,29 +380,30 @@ class OCRService
                 'items' => $items
             ];
 
-        // Actualizar estado
-        $this->db->update('facturas', ['estado' => 'procesando'], ['id' => $facturaId]);
+            // Actualizar estado
+            $this->db->update('facturas', ['estado' => 'procesando'], ['id' => $facturaId]);
 
-        // --- ESTRATEGIA: Railway primero, luego Fallback Local ---
-        $result = null;
+            // --- ESTRATEGIA: Railway primero, luego Fallback Local ---
+            $result = null;
 
-        try {
-            // 1. Intentar Railway
-            $result = $this->callOCRService($filePath, $context);
-        } catch (Exception $e) {
-            error_log("OCRService Corroborate: Falló Railway, intentando local...");
             try {
-                // 2. Fallback Local
-                $result = $this->callLocalVisionAI($filePath, $context);
-            } catch (Exception $e2) {
-                throw new Exception("Error en corroboración total. Railway: " . $e->getMessage() . " | Local: " . $e2->getMessage());
+                // 1. Intentar Railway
+                error_log("OCRService Corroborate: Intentando Railway...");
+                $result = $this->callOCRService($filePath, $context);
+            } catch (Exception $e) {
+                error_log("OCRService Corroborate: Falló Railway, intentando local...");
+                try {
+                    // 2. Fallback Local
+                    $result = $this->callLocalVisionAI($filePath, $context);
+                } catch (Exception $e2) {
+                    throw new Exception("Error en corroboración total. Railway: " . $e->getMessage() . " | Local: " . $e2->getMessage());
+                }
             }
-        }
 
-        // Verificar respuesta final
-        if (!$result || !isset($result['success'])) {
-            throw new Exception('Respuesta inválida del motor de OCR en corroboración');
-        }
+            // Verificar respuesta final
+            if (!$result || !isset($result['success'])) {
+                throw new Exception('Respuesta inválida del motor de OCR en corroboración');
+            }
 
             if (!$result['success']) {
                 throw new Exception($result['error'] ?? 'Error desconocido en corroboración');

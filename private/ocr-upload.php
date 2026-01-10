@@ -304,28 +304,74 @@ $facturas = $invoice->getAll(['usuario_id' => $_SESSION['user_id']], 20);
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="../public/js/app.js"></script>
     <script>
-        // Inicializar dropzone
-        app.initDropzone('dropzone', function (file) {
-            if (app.validateFile(file)) {
-                document.getElementById('fileName').textContent = file.name;
-                document.getElementById('fileSize').textContent = (file.size / 1024 / 1024).toFixed(2) + ' MB';
-                document.getElementById('fileInfo').style.display = 'block';
-            }
-        });
+        /**
+         * Lógica de OCR y UI - Versión Mejorada
+         */
+        document.addEventListener('DOMContentLoaded', function () {
+            console.log("OCR: Página cargada, inicializando componentes...");
 
-        // Mostrar spinner al enviar formulario (solo carga inicial)
-        document.getElementById('uploadForm').addEventListener('submit', function () {
-            app.showSpinner('Subiendo archivo al servidor...');
+            // 1. Inicializar dropzone
+            if (typeof app !== 'undefined' && app.initDropzone) {
+                app.initDropzone('dropzone', function (file) {
+                    if (app.validateFile(file)) {
+                        document.getElementById('fileName').textContent = file.name;
+                        document.getElementById('fileSize').textContent = (file.size / 1024 / 1024).toFixed(2) + ' MB';
+                        document.getElementById('fileInfo').style.display = 'block';
+                    }
+                });
+            }
+
+            // 2. Mostrar spinner al enviar formulario (solo carga inicial)
+            const uploadForm = document.getElementById('uploadForm');
+            if (uploadForm) {
+                uploadForm.addEventListener('submit', function () {
+                    console.log("OCR: Formulario enviado, subiendo archivo...");
+                    if (typeof app !== 'undefined' && app.showSpinner) {
+                        app.showSpinner('Subiendo archivo al servidor...');
+                    }
+                });
+            }
+
+            // 3. Manejar procesamiento OCR automático al cargar si viene de un POST exitoso
+            <?php if ($startOcr): ?>
+                console.log("OCR: Detectada factura recién subida ID: <?php echo $startOcr; ?>. Iniciando polling...");
+                setTimeout(() => {
+                    startOCRPolling(<?php echo $startOcr; ?>);
+                }, 500);
+            <?php endif; ?>
+
+            // 4. Manejar procesamiento OCR manual desde la tabla
+            document.querySelectorAll('.btn-process-ocr').forEach(btn => {
+                btn.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    const url = this.getAttribute('href');
+                    const idMatch = url.match(/id=(\d+)/);
+
+                    if (idMatch) {
+                        console.log("OCR: Click en procesar manual para ID: " + idMatch[1]);
+                        startOCRPolling(idMatch[1]);
+                    } else {
+                        window.location.href = url;
+                    }
+                });
+            });
         });
 
         /**
-         * Función para manejar el polling del estado del OCR con UI Mejorada
+         * Función principal para manejar el polling del estado del OCR con UI Mejorada
          */
         function startOCRPolling(facturaId) {
+            console.log("OCR: startOCRPolling iniciado para facturaId: " + facturaId);
+
             const modal = document.getElementById('ocrModal');
             const mainStatus = document.getElementById('ocrMainStatus');
             const attemptLabel = document.getElementById('ocrAttempt');
             const tipLabel = document.getElementById('ocrTip');
+
+            if (!modal) {
+                console.error("OCR ERROR: No se encontró el modal 'ocrModal' en el DOM.");
+                return;
+            }
 
             const tips = [
                 "Nuestra IA puede detectar más de 50 idiomas y formatos de factura internacionales.",
@@ -339,20 +385,26 @@ $facturas = $invoice->getAll(['usuario_id' => $_SESSION['user_id']], 20);
 
             const updateTip = () => {
                 const randomTip = tips[Math.floor(Math.random() * tips.length)];
-                tipLabel.style.opacity = 0;
-                setTimeout(() => {
-                    tipLabel.textContent = randomTip;
-                    tipLabel.style.opacity = 0.9;
-                }, 500);
+                if (tipLabel) {
+                    tipLabel.style.opacity = 0;
+                    setTimeout(() => {
+                        tipLabel.textContent = randomTip;
+                        tipLabel.style.opacity = 0.9;
+                    }, 500);
+                }
             };
 
             const setStep = (stepNumber, status = 'active') => {
+                console.log("OCR UI: Actualizando a paso " + stepNumber + " (" + status + ")");
                 const steps = [1, 2, 3, 4];
                 steps.forEach(s => {
                     const el = document.getElementById('step' + s);
+                    if (!el) return;
+
                     if (s < stepNumber) {
                         el.className = 'ocr-step completed';
-                        el.querySelector('i').className = 'fas fa-check-circle';
+                        const icon = el.querySelector('i');
+                        if (icon) icon.className = 'fas fa-check-circle';
                     } else if (s === stepNumber) {
                         el.className = 'ocr-step ' + status;
                     } else {
@@ -361,107 +413,105 @@ $facturas = $invoice->getAll(['usuario_id' => $_SESSION['user_id']], 20);
                 });
             };
 
+            // Activar visualmente el modal
             modal.classList.add('active');
             let tipInterval = setInterval(updateTip, 6000);
+            updateTip();
+            setStep(1); // Empezar en paso 1
 
             const formData = new FormData();
             formData.append('factura_id', facturaId);
 
+            console.log("OCR: Solicitando inicio de proceso al servidor...");
             fetch('../public/api/start-ocr.php', {
                 method: 'POST',
                 body: formData
             })
-                .then(response => response.json())
+                .then(response => {
+                    if (!response.ok) throw new Error("Error HTTP " + response.status);
+                    return response.json();
+                })
                 .then(data => {
                     if (data.success) {
+                        console.log("OCR: Respuesta del servidor exitosa, iniciando polling de estado.");
                         let attempts = 0;
-                        const maxAttempts = 120;
+                        const maxAttempts = 150;
                         setStep(2);
-                        mainStatus.textContent = "Analizando el documento...";
+                        if (mainStatus) mainStatus.textContent = "Analizando el documento...";
 
                         const interval = setInterval(() => {
                             attempts++;
-                            attemptLabel.textContent = `Intento de verificación: ${attempts}`;
+                            if (attemptLabel) attemptLabel.textContent = `Intento de verificación: ${attempts}`;
 
-                            // Progresión visual de los pasos basada en los intentos
-                            if (attempts > 3 && attempts < 10) {
+                            // Progresión visual estimada
+                            if (attempts === 5) {
                                 setStep(3);
-                                mainStatus.textContent = "La IA está leyendo los datos...";
-                            } else if (attempts >= 10) {
+                                if (mainStatus) mainStatus.textContent = "La IA está extrayendo los datos...";
+                            } else if (attempts === 15) {
                                 setStep(4);
-                                mainStatus.textContent = "Verificando coherencia de datos...";
+                                if (mainStatus) mainStatus.textContent = "Validando y finalizando...";
                             }
 
                             const controller = new AbortController();
-                            const timeoutId = setTimeout(() => controller.abort(), 30000);
+                            const timeoutId = setTimeout(() => controller.abort(), 25000);
 
                             fetch(`../public/api/check-ocr-status.php?factura_id=${facturaId}`, { signal: controller.signal })
                                 .then(res => {
                                     clearTimeout(timeoutId);
-                                    if (!res.ok) return null;
+                                    if (!res.ok) throw new Error("Status " + res.status);
                                     return res.json();
                                 })
                                 .then(statusData => {
-                                    if (!statusData) return;
-
                                     if (statusData.estado === 'ocr_completado') {
+                                        console.log("OCR: ¡COMPLETADO!");
                                         clearInterval(interval);
                                         clearInterval(tipInterval);
-                                        setStep(5); // Marcar todos como hechos
-                                        mainStatus.textContent = "¡Procesamiento exitoso!";
+                                        setStep(5); // Completar todos
+                                        if (mainStatus) mainStatus.textContent = "¡Extracción completada con éxito!";
                                         setTimeout(() => {
                                             window.location.href = 'ocr-upload.php?message=' + encodeURIComponent('OCR completado con éxito') + '&type=success';
                                         }, 1500);
                                     } else if (statusData.estado === 'error') {
+                                        console.error("OCR Server Error: " + (statusData.observaciones || "Error desconocido"));
                                         clearInterval(interval);
                                         clearInterval(tipInterval);
                                         modal.classList.remove('active');
-                                        app.showAlert('Error en el procesamiento: ' + (statusData.observaciones || 'Error desconocido'), 'danger');
+                                        if (typeof app !== 'undefined' && app.showAlert) {
+                                            app.showAlert('Error en el procesamiento: ' + (statusData.observaciones || 'Error desconocido'), 'danger');
+                                        }
                                     }
 
                                     if (attempts >= maxAttempts) {
+                                        console.warn("OCR: Tiempo de espera máximo alcanzado.");
                                         clearInterval(interval);
                                         clearInterval(tipInterval);
                                         modal.classList.remove('active');
-                                        app.showAlert('El procesamiento está tardando demasiado. Revisa la lista en unos minutos.', 'warning');
+                                        if (typeof app !== 'undefined' && app.showAlert) {
+                                            app.showAlert('El procesamiento está tardando demasiado. Revisa la lista en unos minutos.', 'warning');
+                                        }
                                     }
                                 })
                                 .catch(err => {
                                     clearTimeout(timeoutId);
+                                    console.warn("OCR Polling Warning: " + err.message);
                                 });
-                        }, 5000); // Polling más frecuente
+                        }, 5000); // Polling cada 5 segundos
                     } else {
+                        console.error("OCR Failure: " + data.message);
                         modal.classList.remove('active');
-                        app.showAlert(data.message, 'danger');
+                        if (typeof app !== 'undefined' && app.showAlert) {
+                            app.showAlert(data.message, 'danger');
+                        }
                     }
                 })
                 .catch(error => {
+                    console.error("OCR Critical Error: " + error.message);
                     modal.classList.remove('active');
-                    app.showAlert('Error al iniciar OCR: ' + error.message, 'danger');
+                    if (typeof app !== 'undefined' && app.showAlert) {
+                        app.showAlert('Error crítico al iniciar OCR: ' + error.message, 'danger');
+                    }
                 });
         }
-
-        // Manejar procesamiento OCR automático al cargar si viene de un POST exitoso
-        <?php if ($startOcr): ?>
-            document.addEventListener('DOMContentLoaded', function () {
-                startOCRPolling(<?php echo $startOcr; ?>);
-            });
-        <?php endif; ?>
-
-        // Manejar procesamiento OCR manual desde la tabla
-        document.querySelectorAll('.btn-process-ocr').forEach(btn => {
-            btn.addEventListener('click', function (e) {
-                e.preventDefault();
-                const url = this.getAttribute('href');
-                const idMatch = url.match(/id=(\d+)/);
-
-                if (idMatch) {
-                    startOCRPolling(idMatch[1]);
-                } else {
-                    window.location.href = url;
-                }
-            });
-        });
     </script>
 </body>
 
