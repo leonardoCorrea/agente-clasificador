@@ -63,6 +63,173 @@ $facturas = $invoice->getAll(['usuario_id' => $_SESSION['user_id']], 20);
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../public/css/styles.css">
+    <style>
+        /* Estilos Críticos para el Modal de OCR - Incrustados para asegurar carga */
+        .ocr-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(10, 24, 40, 0.9);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .ocr-modal-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .ocr-modal-content {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 2.5rem;
+            padding: 3.5rem;
+            max-width: 550px;
+            width: 90%;
+            text-align: center;
+            box-shadow: 0 40px 100px -20px rgba(0, 0, 0, 0.7);
+            color: #fff;
+            transform: translateY(30px) scale(0.95);
+            transition: all 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .ocr-modal-overlay.active .ocr-modal-content {
+            transform: translateY(0) scale(1);
+        }
+
+        .ocr-loader-container {
+            width: 140px;
+            height: 140px;
+            margin: 0 auto 2.5rem;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Spinner Moderno */
+        .ocr-main-spinner {
+            width: 100%;
+            height: 100%;
+            border: 4px solid rgba(255, 255, 255, 0.05);
+            border-top: 4px solid #00f2fe;
+            border-right: 4px solid #4facfe;
+            border-radius: 50%;
+            animation: ocr-spin 1.2s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+            filter: drop-shadow(0 0 10px rgba(79, 172, 254, 0.5));
+        }
+
+        @keyframes ocr-spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .ocr-brain-icon {
+            position: absolute;
+            font-size: 3.5rem;
+            background: linear-gradient(135deg, #00f2fe 0%, #4facfe 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: ocr-pulse 2s infinite ease-in-out;
+        }
+
+        @keyframes ocr-pulse {
+            0%, 100% { transform: scale(1); opacity: 0.8; }
+            50% { transform: scale(1.1); opacity: 1; }
+        }
+
+        .ocr-status-title {
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            margin-bottom: 0.5rem;
+            font-size: 1.8rem;
+        }
+
+        .ocr-steps {
+            list-style: none;
+            padding: 0;
+            margin: 2.5rem 0;
+            text-align: left;
+            display: inline-block;
+        }
+
+        .ocr-step {
+            display: flex;
+            align-items: center;
+            gap: 1.25rem;
+            margin-bottom: 1.25rem;
+            opacity: 0.3;
+            transition: all 0.4s ease;
+            font-size: 1.05rem;
+        }
+
+        .ocr-step.active {
+            opacity: 1;
+            color: #4facfe;
+            font-weight: 600;
+            transform: translateX(10px);
+        }
+
+        .ocr-step.completed {
+            opacity: 0.8;
+            color: #00f2fe;
+        }
+
+        .ocr-step-icon {
+            width: 30px;
+            height: 30px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.9rem;
+        }
+
+        .ocr-step.completed .ocr-step-icon {
+            background: rgba(0, 242, 254, 0.1);
+            color: #00f2fe;
+        }
+
+        .ocr-tip-box {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 1.5rem;
+            padding: 1.5rem;
+            margin-top: 1rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .ocr-tip-box::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background: linear-gradient(to bottom, #00f2fe, #4facfe);
+        }
+
+        .ocr-tip-tag {
+            font-size: 0.65rem;
+            font-weight: 900;
+            text-transform: uppercase;
+            color: #4facfe;
+            letter-spacing: 2px;
+            margin-bottom: 0.5rem;
+            display: block;
+        }
+    </style>
 </head>
 
 <body>
@@ -251,45 +418,49 @@ $facturas = $invoice->getAll(['usuario_id' => $_SESSION['user_id']], 20);
         </div>
     </div>
 
-    <!-- Enhanced OCR Processing Modal -->
+    <!-- Enhanced OCR Processing Modal (Spinner Loader Style) -->
     <div id="ocrModal" class="ocr-modal-overlay">
         <div class="ocr-modal-content">
-            <div class="ocr-ai-scanner">
-                <div class="ocr-ai-circle"></div>
-                <i class="fas fa-brain ocr-ai-icon"></i>
+            <div class="ocr-loader-container">
+                <div class="ocr-main-spinner"></div>
+                <i class="fas fa-brain ocr-brain-icon"></i>
             </div>
 
-            <h3 class="mb-2">Procesando Factura</h3>
-            <p id="ocrMainStatus" class="text-white-50">Iniciando motor de IA Vision...</p>
+            <h2 class="ocr-status-title">Procesando Factura</h2>
+            <p id="ocrMainStatus" class="text-white-50">Sincronizando con el motor de IA Vision...</p>
 
-            <ul class="ocr-steps">
-                <li id="step1" class="ocr-step active">
-                    <div class="ocr-step-icon"><i class="fas fa-file-upload"></i></div>
-                    <span>Cargando documento en la nube...</span>
-                </li>
-                <li id="step2" class="ocr-step">
-                    <div class="ocr-step-icon"><i class="fas fa-eye"></i></div>
-                    <span>Analizando estructura visual...</span>
-                </li>
-                <li id="step3" class="ocr-step">
-                    <div class="ocr-step-icon"><i class="fas fa-microchip"></i></div>
-                    <span>Extrayendo datos con GPT-4o...</span>
-                </li>
-                <li id="step4" class="ocr-step">
-                    <div class="ocr-step-icon"><i class="fas fa-check-double"></i></div>
-                    <span>Validando cálculos y totales...</span>
-                </li>
-            </ul>
+            <div class="text-start d-flex justify-content-center">
+                <ul class="ocr-steps">
+                    <li id="step1" class="ocr-step active">
+                        <div class="ocr-step-icon"><i class="fas fa-cloud-upload-alt"></i></div>
+                        <span>Carga de documento</span>
+                    </li>
+                    <li id="step2" class="ocr-step">
+                        <div class="ocr-step-icon"><i class="fas fa-eye"></i></div>
+                        <span>Análisis de estructura</span>
+                    </li>
+                    <li id="step3" class="ocr-step">
+                        <div class="ocr-step-icon"><i class="fas fa-microchip"></i></div>
+                        <span>Extracción de datos (GPT-4o)</span>
+                    </li>
+                    <li id="step4" class="ocr-step">
+                        <div class="ocr-step-icon"><i class="fas fa-check-double"></i></div>
+                        <span>Validación y Coherencia</span>
+                    </li>
+                </ul>
+            </div>
 
-            <div class="ocr-tip-container">
-                <span class="ocr-tip-label">¿Sabías que?</span>
-                <p id="ocrTip" class="text-white m-0" style="font-size: 0.85rem; opacity: 0.9;">
-                    Nuestra IA puede detectar más de 50 idiomas y formatos de factura internacionales.
+            <div class="ocr-tip-box">
+                <span class="ocr-tip-tag">Sugerencia del Sistema</span>
+                <p id="ocrTip" class="m-0 text-white-50" style="font-size: 0.95rem; line-height: 1.5;">
+                    Nuestra IA está analizando cada ítem para asegurar la clasificación correcta.
                 </p>
             </div>
 
             <div class="mt-4">
-                <small class="text-white-50" id="ocrAttempt">Intento: 0</small>
+                <span class="badge rounded-pill bg-dark border border-secondary text-secondary px-3 py-2" id="ocrAttempt" style="font-size: 0.75rem;">
+                    Intento de verificación: 0
+                </span>
             </div>
         </div>
     </div>
