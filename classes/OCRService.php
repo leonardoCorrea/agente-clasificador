@@ -140,25 +140,25 @@ class OCRService
             // Actualizar estado a procesando
             $this->db->update('facturas', ['estado' => 'procesando'], ['id' => $facturaId]);
 
-            // --- ESTRATEGIA: Railway primero, luego Fallback Local ---
+            // --- ESTRATEGIA: Vision AI Local primero, luego Fallback Railway ---
             $result = null;
             $errorDetails = "";
 
             try {
-                // 1. Intentar Microservicio en Railway (EL MEJOR)
-                error_log("OCRService: Intentando microservicio Railway en " . $this->ocrServiceUrl);
-                $result = $this->callOCRService($filePath);
+                // 1. Intentar Vision AI local (GPT-4o directo) - NUEVA PRIORIDAD
+                error_log("OCRService: Intentando Vision AI local (Prioridad 1)...");
+                $result = $this->callLocalVisionAI($filePath);
             } catch (Exception $e) {
-                error_log("OCRService: Falló Railway. Error: " . $e->getMessage());
-                $errorDetails .= "Fallback Railway Error: " . $e->getMessage() . "\n";
-                
+                error_log("OCRService: Falló Vision AI local. Intentando fallback a Railway...");
+                $errorDetails .= "Fallback Local Error: " . $e->getMessage() . "\n";
+
                 try {
-                    // 2. Fallback a Vision AI local (Script Python directo)
-                    error_log("OCRService: Iniciando Fallback a Vision AI local...");
-                    $result = $this->callLocalVisionAI($filePath);
+                    // 2. Fallback a Microservicio en Railway
+                    error_log("OCRService: Iniciando Fallback a Railway en " . $this->ocrServiceUrl);
+                    $result = $this->callOCRService($filePath);
                 } catch (Exception $e2) {
-                    error_log("OCRService: Falló también el fallback local. Error: " . $e2->getMessage());
-                    throw new Exception("Fallo total en OCR. Railway: " . $e->getMessage() . " | Local: " . $e2->getMessage());
+                    error_log("OCRService: Falló también el fallback de Railway. Error: " . $e2->getMessage());
+                    throw new Exception("Fallo total en OCR. Local: " . $e->getMessage() . " | Railway: " . $e2->getMessage());
                 }
             }
 
@@ -383,20 +383,20 @@ class OCRService
             // Actualizar estado
             $this->db->update('facturas', ['estado' => 'procesando'], ['id' => $facturaId]);
 
-            // --- ESTRATEGIA: Railway primero, luego Fallback Local ---
+            // --- ESTRATEGIA: Vision AI Local primero, luego Fallback Railway ---
             $result = null;
 
             try {
-                // 1. Intentar Railway
-                error_log("OCRService Corroborate: Intentando Railway...");
-                $result = $this->callOCRService($filePath, $context);
+                // 1. Intentar Local (Prioridad 1)
+                error_log("OCRService Corroborate: Intentando Vision AI Local...");
+                $result = $this->callLocalVisionAI($filePath, $context);
             } catch (Exception $e) {
-                error_log("OCRService Corroborate: Falló Railway, intentando local...");
+                error_log("OCRService Corroborate: Falló local, intentando Railway...");
                 try {
-                    // 2. Fallback Local
-                    $result = $this->callLocalVisionAI($filePath, $context);
+                    // 2. Fallback Railway
+                    $result = $this->callOCRService($filePath, $context);
                 } catch (Exception $e2) {
-                    throw new Exception("Error en corroboración total. Railway: " . $e->getMessage() . " | Local: " . $e2->getMessage());
+                    throw new Exception("Error en corroboración total. Local: " . $e->getMessage() . " | Railway: " . $e2->getMessage());
                 }
             }
 
@@ -470,19 +470,19 @@ class OCRService
     {
         $pythonPath = IS_PRODUCTION ? 'python3' : 'python';
         $scriptPath = BASE_PATH . '/python-scripts/ocr_process.py';
-        
+
         if (!file_exists($scriptPath)) {
             throw new Exception("Script de fallback local no encontrado en: " . $scriptPath);
         }
 
         $cmd = escapeshellcmd("$pythonPath $scriptPath " . escapeshellarg($filePath) . " " . escapeshellarg($this->apiKey));
-        
+
         if ($context) {
             $cmd .= " " . escapeshellarg(json_encode($context));
         }
 
         $output = shell_exec($cmd . " 2>&1");
-        
+
         if (empty($output)) {
             throw new Exception("El script local no devolvió ninguna salida.");
         }
