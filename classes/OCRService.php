@@ -112,6 +112,7 @@ class OCRService
      */
     public function processInvoice($facturaId)
     {
+        set_time_limit(900); // 15 minutos para procesos de alta calidad
         // Optimizaciones extremas para evitar timeouts del servidor (Litespeed/Apache)
         @set_time_limit(0);
         @ini_set('max_execution_time', 0);

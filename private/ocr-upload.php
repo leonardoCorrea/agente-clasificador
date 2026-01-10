@@ -129,8 +129,13 @@ $facturas = $invoice->getAll(['usuario_id' => $_SESSION['user_id']], 20);
         }
 
         @keyframes ocr-spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
         }
 
         .ocr-brain-icon {
@@ -143,8 +148,17 @@ $facturas = $invoice->getAll(['usuario_id' => $_SESSION['user_id']], 20);
         }
 
         @keyframes ocr-pulse {
-            0%, 100% { transform: scale(1); opacity: 0.8; }
-            50% { transform: scale(1.1); opacity: 1; }
+
+            0%,
+            100% {
+                transform: scale(1);
+                opacity: 0.8;
+            }
+
+            50% {
+                transform: scale(1.1);
+                opacity: 1;
+            }
         }
 
         .ocr-status-title {
@@ -441,7 +455,7 @@ $facturas = $invoice->getAll(['usuario_id' => $_SESSION['user_id']], 20);
                     </li>
                     <li id="step3" class="ocr-step">
                         <div class="ocr-step-icon"><i class="fas fa-microchip"></i></div>
-                        <span>Extracción de datos (GPT-4o)</span>
+                        <span>Extracción de datos</span>
                     </li>
                     <li id="step4" class="ocr-step">
                         <div class="ocr-step-icon"><i class="fas fa-check-double"></i></div>
@@ -451,14 +465,15 @@ $facturas = $invoice->getAll(['usuario_id' => $_SESSION['user_id']], 20);
             </div>
 
             <div class="ocr-tip-box">
-                <span class="ocr-tip-tag">Sugerencia del Sistema</span>
+                <span class="ocr-tip-tag">Avance...</span>
                 <p id="ocrTip" class="m-0 text-white-50" style="font-size: 0.95rem; line-height: 1.5;">
                     Nuestra IA está analizando cada ítem para asegurar la clasificación correcta.
                 </p>
             </div>
 
             <div class="mt-4">
-                <span class="badge rounded-pill bg-dark border border-secondary text-secondary px-3 py-2" id="ocrAttempt" style="font-size: 0.75rem;">
+                <span class="badge rounded-pill bg-dark border border-secondary text-secondary px-3 py-2"
+                    id="ocrAttempt" style="font-size: 0.75rem;">
                     Intento de verificación: 0
                 </span>
             </div>

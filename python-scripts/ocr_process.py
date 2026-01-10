@@ -107,7 +107,7 @@ def process_ocr(file_path, api_key, context=None):
             
             for page_num in range(max_pages):
                 page = doc.load_page(page_num)
-                pix = page.get_pixmap(dpi=130) # DPI optimizado para velocidad vs precisión
+                pix = page.get_pixmap(dpi=200) # Aumentado a 200 DPI para mayor legibilidad de ítems pequeños
                 temp_image = f"{file_path}_p{page_num}.png"
                 pix.save(temp_image)
                 base64_images.append(encode_image(temp_image))
@@ -141,46 +141,33 @@ def process_ocr(file_path, api_key, context=None):
             Datos actuales para corroborar: """ + json.dumps(context, ensure_ascii=False)
             user_prompt = "Compara estos datos con las imágenes de la factura y devuelve el JSON corregido y completo (como un array de facturas)."
         else:
-            system_prompt = """Eres un motor de OCR especializado en facturas complejas.
-            Tu misión es extraer TODOS los datos posibles con extrema precisión, SIN RESUMIR.
+            system_prompt = """Eres un motor de OCR especializado en facturas industriales y comerciales de alta complejidad.
+            Tu misión es extraer ABSOLUTAMENTE TODOS los datos con precisión quirúrgica.
             
-            ⚠️ LÍMITE DE TOKENS: Tienes un límite estricto de respuesta. Debes ser EXTREMADAMENTE CONCISO en todos los campos de texto.
+            REGLAS DE EXTRACCIÓN MANDATORIAS:
+            1. **EXTRACCIÓN TOTAL DE ÍTEMS (CRÍTICO):** Si la factura tiene 26 líneas, DEBES devolver 26 objetos en el array 'items'. Si tiene 50, devuelve 50. NO omitas ninguna línea por pequeña que sea. NO agrupes ítems similares.
+            2. **FIDELIDAD DE DATOS:** Extrae las descripciones, cantidades y precios tal cual aparecen.
+            3. **RELACIÓN MATEMÁTICA:** Verifica que (Cantidad x Precio Unitario) sea igual al Precio Total de cada línea.
+            4. **NÚMERO DE FACTURA:** Busca el identificador único del documento con cuidado.
+            5. **ESTRUCTURA:** Devuelve estrictamente el JSON solicitado.
             
-            REGLAS DE EXTRACCIÓN CRÍTICAS:
-            1. **EXTRACCIÓN COMPLETA DE ÍTEMS:** Si la factura tiene 20 líneas, DEBES devolver 20 objetos en el array 'items'. Si tiene 100, devuelve 100. NO RESUMAS. NO AGRUPES. Extrae línea por línea tal cual aparece.
-            2. **NÚMERO DE FACTURA:** Busca "Factura", "Invoice", "Bill", "Ref", o símbolos como "#". Extrae el valor LITERALMENTE (ej: "Invoice #12345").
-            3. **DESCRIPCIONES ULTRA CONCISAS:** 
-               - 'descripcion': MÁXIMO 80 caracteres (solo nombre esencial del producto)
-               - 'caracteristicas': MÁXIMO 50 caracteres (solo info crítica)
-               - 'datos_importantes': MÁXIMO 50 caracteres (solo códigos)
-               - 'numero_serie_parte': MÁXIMO 30 caracteres
-            4. **MONEDA Y MONTOS:** Ten CUIDADO con símbolos confusos ('$' vs '5'). Verifica matemáticamente (cantidad * precio = total).
-            5. **TEXTO_COMPLETO MUY BREVE:** El campo "texto_completo" debe ser ULTRA CONCISO (máximo 150 caracteres): solo número factura, proveedor, fecha, total. NADA MÁS.
-            6. **ESTRUCTURA EXACTA:** Devuelve SOLO el JSON válido. NO agregues explicaciones ni texto adicional.
+            ESQUEMA DE DATOS:
+            - 'descripcion': Hasta 150 caracteres para no perder detalles técnicos.
+            - 'items': Array completo con todos los productos/servicios detectados.
             
             ESTRUCTURA JSON REQUERIDA:
             {
                 "facturas": [
                     {
-                        "texto_completo": "Breve resumen (max 150 chars)",
+                        "texto_completo": "Resumen ejecutivo breve (número, proveedor, total)",
                         "datos_estructurados": {
                             "numero_factura": "String",
                             "fecha": "YYYY-MM-DD",
-                            "proveedor": "String (max 100 chars)",
-                            "moneda": "USD",
-                            "remitente": {
-                                "nombre": "String (max 100 chars)",
-                                "direccion": "String (max 150 chars)",
-                                "contacto": "String (max 80 chars)",
-                                "telefono": "String (max 30 chars)"
-                            },
-                            "consignatario": {
-                                "nombre": "String (max 100 chars)",
-                                "direccion": "String (max 150 chars)",
-                                "contacto": "String (max 80 chars)",
-                                "pais": "String (max 50 chars)"
-                            },
-                            "pais_origen": "String (max 50 chars)",
+                            "proveedor": "String",
+                            "moneda": "USD/EUR/etc",
+                            "remitente": { "nombre": "String", "direccion": "String", "contacto": "String", "telefono": "String" },
+                            "consignatario": { "nombre": "String", "direccion": "String", "contacto": "String", "pais": "String" },
+                            "pais_origen": "String",
                             "totales": {
                                 "subtotal": 0.00,
                                 "descuento": 0.00,
@@ -191,10 +178,10 @@ def process_ocr(file_path, api_key, context=None):
                             "items": [
                                 {
                                     "numero_linea": 1,
-                                    "numero_serie_parte": "String (max 30 chars)",
-                                    "descripcion": "String (max 80 chars)",
-                                    "caracteristicas": "String (max 50 chars)",
-                                    "datos_importantes": "String (max 50 chars)",
+                                    "numero_serie_parte": "String",
+                                    "descripcion": "Descripción detallada (max 150 chars)",
+                                    "caracteristicas": "String",
+                                    "datos_importantes": "String",
                                     "unidad_medida": "String",
                                     "cantidad": 0.00,
                                     "precio_unitario": 0.00,
@@ -205,7 +192,7 @@ def process_ocr(file_path, api_key, context=None):
                     }
                 ]
             }"""
-            user_prompt = "Analiza las imágenes y extrae la información completa de la factura siguiendo estrictamente el esquema JSON proporcionado. ⚠️ CRÍTICO: Mantén TODOS los campos de texto EXTREMADAMENTE BREVES (respeta los límites de caracteres). Si la factura tiene muchos items, sé aún más conciso en las descripciones para evitar truncamiento."
+            user_prompt = "Lee cuidadosamente las imágenes de la factura. Extrae TODOS los ítems de la tabla principal sin excepción. Asegúrate de que el número de objetos en el array 'items' coincida exactamente con el número de líneas físicas en la factura."
 
         # Llamar a Vision Multi con max_tokens optimizado
         response = client.chat.completions.create(
