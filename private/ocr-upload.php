@@ -251,6 +251,49 @@ $facturas = $invoice->getAll(['usuario_id' => $_SESSION['user_id']], 20);
         </div>
     </div>
 
+    <!-- Enhanced OCR Processing Modal -->
+    <div id="ocrModal" class="ocr-modal-overlay">
+        <div class="ocr-modal-content">
+            <div class="ocr-ai-scanner">
+                <div class="ocr-ai-circle"></div>
+                <i class="fas fa-brain ocr-ai-icon"></i>
+            </div>
+
+            <h3 class="mb-2">Procesando Factura</h3>
+            <p id="ocrMainStatus" class="text-white-50">Iniciando motor de IA Vision...</p>
+
+            <ul class="ocr-steps">
+                <li id="step1" class="ocr-step active">
+                    <div class="ocr-step-icon"><i class="fas fa-file-upload"></i></div>
+                    <span>Cargando documento en la nube...</span>
+                </li>
+                <li id="step2" class="ocr-step">
+                    <div class="ocr-step-icon"><i class="fas fa-eye"></i></div>
+                    <span>Analizando estructura visual...</span>
+                </li>
+                <li id="step3" class="ocr-step">
+                    <div class="ocr-step-icon"><i class="fas fa-microchip"></i></div>
+                    <span>Extrayendo datos con GPT-4o...</span>
+                </li>
+                <li id="step4" class="ocr-step">
+                    <div class="ocr-step-icon"><i class="fas fa-check-double"></i></div>
+                    <span>Validando cálculos y totales...</span>
+                </li>
+            </ul>
+
+            <div class="ocr-tip-container">
+                <span class="ocr-tip-label">¿Sabías que?</span>
+                <p id="ocrTip" class="text-white m-0" style="font-size: 0.85rem; opacity: 0.9;">
+                    Nuestra IA puede detectar más de 50 idiomas y formatos de factura internacionales.
+                </p>
+            </div>
+
+            <div class="mt-4">
+                <small class="text-white-50" id="ocrAttempt">Intento: 0</small>
+            </div>
+        </div>
+    </div>
+
     <footer class="footer">
         <div class="container text-center">
             <span class="text-white">© <?php echo date('Y'); ?> Sistema de Clasificación Aduanera Inteligente - Todos
@@ -276,13 +319,54 @@ $facturas = $invoice->getAll(['usuario_id' => $_SESSION['user_id']], 20);
         });
 
         /**
-         * Función para manejar el polling del estado del OCR
+         * Función para manejar el polling del estado del OCR con UI Mejorada
          */
         function startOCRPolling(facturaId) {
-            app.showSpinner('Iniciando procesamiento con IA Vision...');
+            const modal = document.getElementById('ocrModal');
+            const mainStatus = document.getElementById('ocrMainStatus');
+            const attemptLabel = document.getElementById('ocrAttempt');
+            const tipLabel = document.getElementById('ocrTip');
+
+            const tips = [
+                "Nuestra IA puede detectar más de 50 idiomas y formatos de factura internacionales.",
+                "El sistema valida automáticamente que (Cantidad x Precio) coincida con el Total.",
+                "Estamos priorizando el motor de Railway para mayor precisión y velocidad.",
+                "Las facturas PDF se procesan página por página para no perder ningún detalle.",
+                "Si la factura es muy larga, el proceso puede tardar un poco más. ¡Ten paciencia!",
+                "La IA extrae automáticamente remitente, consignatario y todos los ítems de la tabla.",
+                "Una vez terminado, podrás digitalizar la factura con un solo clic."
+            ];
+
+            const updateTip = () => {
+                const randomTip = tips[Math.floor(Math.random() * tips.length)];
+                tipLabel.style.opacity = 0;
+                setTimeout(() => {
+                    tipLabel.textContent = randomTip;
+                    tipLabel.style.opacity = 0.9;
+                }, 500);
+            };
+
+            const setStep = (stepNumber, status = 'active') => {
+                const steps = [1, 2, 3, 4];
+                steps.forEach(s => {
+                    const el = document.getElementById('step' + s);
+                    if (s < stepNumber) {
+                        el.className = 'ocr-step completed';
+                        el.querySelector('i').className = 'fas fa-check-circle';
+                    } else if (s === stepNumber) {
+                        el.className = 'ocr-step ' + status;
+                    } else {
+                        el.className = 'ocr-step';
+                    }
+                });
+            };
+
+            modal.classList.add('active');
+            let tipInterval = setInterval(updateTip, 6000);
 
             const formData = new FormData();
             formData.append('factura_id', facturaId);
+
             fetch('../public/api/start-ocr.php', {
                 method: 'POST',
                 body: formData
@@ -291,66 +375,68 @@ $facturas = $invoice->getAll(['usuario_id' => $_SESSION['user_id']], 20);
                 .then(data => {
                     if (data.success) {
                         let attempts = 0;
-                        const maxAttempts = 120; // 10 minutos (cada 5s)
+                        const maxAttempts = 120;
+                        setStep(2);
+                        mainStatus.textContent = "Analizando el documento...";
 
                         const interval = setInterval(() => {
                             attempts++;
-                            app.showSpinner(`Analizando factura con IA... Por favor espera.<br><small class="text-white-50">Intento de verificación: ${attempts}</small><br><small style="font-size: 0.7em; opacity: 0.8;">No cierres esta ventana mientras la IA trabaja.</small>`);
+                            attemptLabel.textContent = `Intento de verificación: ${attempts}`;
 
-                            // Timeout de 30 segundos para la consulta de estado (más generoso para servers lentos)
+                            // Progresión visual de los pasos basada en los intentos
+                            if (attempts > 3 && attempts < 10) {
+                                setStep(3);
+                                mainStatus.textContent = "La IA está leyendo los datos...";
+                            } else if (attempts >= 10) {
+                                setStep(4);
+                                mainStatus.textContent = "Verificando coherencia de datos...";
+                            }
+
                             const controller = new AbortController();
                             const timeoutId = setTimeout(() => controller.abort(), 30000);
-
-                            console.log(`Polling: Iniciando intento ${attempts} para factura ${facturaId}...`);
 
                             fetch(`../public/api/check-ocr-status.php?factura_id=${facturaId}`, { signal: controller.signal })
                                 .then(res => {
                                     clearTimeout(timeoutId);
-                                    console.log(`Polling: Respuesta recibida (Status: ${res.status})`);
-                                    if (!res.ok) {
-                                        return null;
-                                    }
+                                    if (!res.ok) return null;
                                     return res.json();
                                 })
                                 .then(statusData => {
                                     if (!statusData) return;
 
                                     if (statusData.estado === 'ocr_completado') {
-                                        console.log('Polling: ¡Completado!');
                                         clearInterval(interval);
-                                        app.hideSpinner();
-                                        window.location.href = 'ocr-upload.php?message=' + encodeURIComponent('OCR completado con éxito') + '&type=success';
+                                        clearInterval(tipInterval);
+                                        setStep(5); // Marcar todos como hechos
+                                        mainStatus.textContent = "¡Procesamiento exitoso!";
+                                        setTimeout(() => {
+                                            window.location.href = 'ocr-upload.php?message=' + encodeURIComponent('OCR completado con éxito') + '&type=success';
+                                        }, 1500);
                                     } else if (statusData.estado === 'error') {
-                                        console.log('Polling: Error detectado en el estado');
                                         clearInterval(interval);
-                                        app.hideSpinner();
+                                        clearInterval(tipInterval);
+                                        modal.classList.remove('active');
                                         app.showAlert('Error en el procesamiento: ' + (statusData.observaciones || 'Error desconocido'), 'danger');
-                                    } else {
-                                        console.log('Polling: Estado actual: ' + statusData.estado);
                                     }
 
                                     if (attempts >= maxAttempts) {
                                         clearInterval(interval);
-                                        app.hideSpinner();
-                                        app.showAlert('El procesamiento está tardando más de lo esperado. Por favor, revisa la lista en unos minutos.', 'warning');
+                                        clearInterval(tipInterval);
+                                        modal.classList.remove('active');
+                                        app.showAlert('El procesamiento está tardando demasiado. Revisa la lista en unos minutos.', 'warning');
                                     }
                                 })
                                 .catch(err => {
                                     clearTimeout(timeoutId);
-                                    if (err.name === 'AbortError') {
-                                        console.warn('Polling: La petición de estado excedió los 30s. Reintentando...');
-                                    } else {
-                                        console.error('Polling error:', err);
-                                    }
                                 });
-                        }, 10000); // Poll cada 10 segundos para no saturar
+                        }, 5000); // Polling más frecuente
                     } else {
-                        app.hideSpinner();
+                        modal.classList.remove('active');
                         app.showAlert(data.message, 'danger');
                     }
                 })
                 .catch(error => {
-                    app.hideSpinner();
+                    modal.classList.remove('active');
                     app.showAlert('Error al iniciar OCR: ' + error.message, 'danger');
                 });
         }
