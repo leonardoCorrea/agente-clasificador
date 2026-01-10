@@ -57,7 +57,9 @@ def process_ocr(file_path, api_key, context=None):
     Procesar OCR o Corroboración usando Vision Multi.
     Soporta múltiples páginas y múltiples facturas por archivo.
     """
-    print(f"DEBUG: Iniciando proceso_ocr para {file_path}")
+    mode = "CORROBORACIÓN" if context else "EXTRACCIÓN DIRECTA"
+    print(f"HTTP Logs | OCR Process | Starting | Mode: {mode} | File: {os.path.basename(file_path)}")
+    
     try:
         client = OpenAI(
             api_key=api_key,
@@ -101,7 +103,7 @@ def process_ocr(file_path, api_key, context=None):
                 }
             })
         
-        print(f"DEBUG: Enviando {len(image_contents)} imágenes a OpenAI (GPT-4o)...")
+        print(f"HTTP Logs | OCR Process | Prepared {len(image_contents)} images for OpenAI Vision")
         
         if context:
             print(f"DEBUG: Usando modo CORROBORACIÓN con contexto.")
@@ -173,7 +175,7 @@ def process_ocr(file_path, api_key, context=None):
         )
         
         content = response.choices[0].message.content
-        print(f"DEBUG: Respuesta recibida de OpenAI ({len(content)} caracteres).")
+        print(f"HTTP Logs | OCR Process | OpenAI Response Received | Size: {len(content)} characters")
         
         try:
             result = json.loads(content)
@@ -202,7 +204,7 @@ def process_ocr(file_path, api_key, context=None):
             'metodo': 'intelligent-ocr-engine' if not context else 'intelligent-ocr-verified'
         }
         
-        print(f"DEBUG: Proceso finalizado exitosamente.")
+        print(f"HTTP Logs | OCR Process | Success | Invoices detected: {len(facturas_list)}")
         return final_result
 
     except Exception as e:

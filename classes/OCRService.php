@@ -137,16 +137,35 @@ class OCRService
                 return ['success' => false, 'message' => 'Archivo no encontrado'];
             }
 
-            // Actualizar estado a procesando
-            $this->db->update('facturas', ['estado' => 'procesando'], ['id' => $facturaId]);
+        // Actualizar estado a procesando
+        $this->db->update('facturas', ['estado' => 'procesando'], ['id' => $facturaId]);
 
-            // Llamar al microservicio OCR
+        // --- ESTRATEGIA: Railway primero, luego Fallback Local ---
+        $result = null;
+        $errorDetails = "";
+
+        try {
+            // 1. Intentar Microservicio en Railway (EL MEJOR)
+            error_log("OCRService: Intentando microservicio Railway...");
             $result = $this->callOCRService($filePath);
-
-            // Verificar respuesta
-            if (!$result || !isset($result['success'])) {
-                throw new Exception('Respuesta inválida del microservicio OCR');
+        } catch (Exception $e) {
+            error_log("OCRService: Falló Railway. Error: " . $e->getMessage());
+            $errorDetails .= "Fallback Railway Error: " . $e->getMessage() . "\n";
+            
+            try {
+                // 2. Fallback a Vision AI local (Script Python directo)
+                error_log("OCRService: Iniciando Fallback a Vision AI local...");
+                $result = $this->callLocalVisionAI($filePath);
+            } catch (Exception $e2) {
+                error_log("OCRService: Falló también el fallback local. Error: " . $e2->getMessage());
+                throw new Exception("Fallo total en OCR. Railway: " . $e->getMessage() . " | Local: " . $e2->getMessage());
             }
+        }
+
+        // Verificar respuesta final
+        if (!$result || !isset($result['success'])) {
+            throw new Exception('Respuesta inválida del motor de OCR (Fallo en cascada)');
+        }
 
             if (!$result['success']) {
                 $errorMsg = $result['error'] ?? 'Error desconocido en OCR';
@@ -361,16 +380,29 @@ class OCRService
                 'items' => $items
             ];
 
-            // Actualizar estado
-            $this->db->update('facturas', ['estado' => 'procesando'], ['id' => $facturaId]);
+        // Actualizar estado
+        $this->db->update('facturas', ['estado' => 'procesando'], ['id' => $facturaId]);
 
-            // Llamar al microservicio OCR con contexto para corroboración
+        // --- ESTRATEGIA: Railway primero, luego Fallback Local ---
+        $result = null;
+
+        try {
+            // 1. Intentar Railway
             $result = $this->callOCRService($filePath, $context);
-
-            // Verificar respuesta
-            if (!$result || !isset($result['success'])) {
-                throw new Exception('Respuesta inválida del microservicio OCR en corroboración');
+        } catch (Exception $e) {
+            error_log("OCRService Corroborate: Falló Railway, intentando local...");
+            try {
+                // 2. Fallback Local
+                $result = $this->callLocalVisionAI($filePath, $context);
+            } catch (Exception $e2) {
+                throw new Exception("Error en corroboración total. Railway: " . $e->getMessage() . " | Local: " . $e2->getMessage());
             }
+        }
+
+        // Verificar respuesta final
+        if (!$result || !isset($result['success'])) {
+            throw new Exception('Respuesta inválida del motor de OCR en corroboración');
+        }
 
             if (!$result['success']) {
                 throw new Exception($result['error'] ?? 'Error desconocido en corroboración');
@@ -428,6 +460,46 @@ class OCRService
                 'message' => 'Error en corroboración: ' . $e->getMessage()
             ];
         }
+    }
+
+    /**
+     * Fallback: Llamar a Vision AI localmente vía script Python
+     */
+    private function callLocalVisionAI($filePath, $context = null)
+    {
+        $pythonPath = IS_PRODUCTION ? 'python3' : 'python';
+        $scriptPath = BASE_PATH . '/python-scripts/ocr_process.py';
+        
+        if (!file_exists($scriptPath)) {
+            throw new Exception("Script de fallback local no encontrado en: " . $scriptPath);
+        }
+
+        $cmd = escapeshellcmd("$pythonPath $scriptPath " . escapeshellarg($filePath) . " " . escapeshellarg($this->apiKey));
+        
+        if ($context) {
+            $cmd .= " " . escapeshellarg(json_encode($context));
+        }
+
+        $output = shell_exec($cmd . " 2>&1");
+        
+        if (empty($output)) {
+            throw new Exception("El script local no devolvió ninguna salida.");
+        }
+
+        // El script devuelve el JSON al final, pero puede haber warnings antes
+        $jsonStart = strpos($output, '{"success"');
+        if ($jsonStart === false) {
+            throw new Exception("No se encontró JSON válido en la salida local: " . substr($output, 0, 500));
+        }
+
+        $jsonStr = substr($output, $jsonStart);
+        $result = json_decode($jsonStr, true);
+
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            throw new Exception("Error decodificando JSON local: " . json_last_error_msg());
+        }
+
+        return $result;
     }
 
     /**

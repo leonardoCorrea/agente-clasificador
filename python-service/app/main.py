@@ -10,6 +10,19 @@ app = FastAPI(
     version=settings.APP_VERSION,
 )
 
+# Middleware de Logging para "HTTP Logs"
+@app.middleware("http")
+async def log_requests(request, call_next):
+    import time
+    start_time = time.time()
+    response = await call_next(request)
+    duration = time.time() - start_time
+    
+    # Imprimir en el formato solicitado para Railway
+    print(f"HTTP Logs | {request.method} {request.url.path} | Status: {response.status_code} | Duration: {duration:.2f}s")
+    
+    return response
+
 # Configurar CORS
 app.add_middleware(
     CORSMiddleware,
