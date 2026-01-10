@@ -49,48 +49,71 @@ def sanitize_for_json(obj):
 
 def repair_truncated_json(json_str):
     """
-    Intenta reparar JSON truncado de forma robusta.
-    1. Cierra strings abiertos.
-    2. Elimina comas finales que preceden a un cierre (ej: ...,]).
-    3. Cierra arrays y objetos en orden inverso.
+    Reparación avanzada de JSON truncado.
+    - Cierra comillas abiertas.
+    - Elimina comas finales.
+    - Repara casos de ':' sin valor.
+    - Cierra llaves y corchetes respetando el contenido de strings.
     """
-    # 1. Reparar strings sin cerrar
-    # Contar comillas ignorando las escapadas \"
-    parts = json_str.split('"')
-    quote_count = 0
-    for i in range(len(parts)-1):
-        if not parts[i].endswith('\\'):
-            quote_count += 1
+    if not json_str:
+        return "{}"
+        
+    json_str = json_str.strip()
     
-    if quote_count % 2 != 0:
+    # 1. Reparar comillas/strings abiertos
+    # Contamos comillas reales (no escapadas)
+    import re
+    parts = re.split(r'(?<!\\)"', json_str)
+    if len(parts) % 2 == 0: # Número par de partes = número impar de comillas
         json_str += '"'
     
-    # 2. Eliminar comas sueltas al final (muy común en truncamiento)
+    # 2. Eliminar comas finales (pero NO colones, los colones necesitan un valor)
     json_str = json_str.strip()
     if json_str.endswith(','):
         json_str = json_str[:-1]
     
-    # 3. Limpiar comas antes de cierres (ej: [1, 2, ])
-    import re
+    # 3. Limpiar comas antes de cierres estructurales
     json_str = re.sub(r',\s*([\]}])', r'\1', json_str)
     
-    # 4. Cerrar estructuras abiertas
-    open_braces = json_str.count('{') - json_str.count('}')
-    open_brackets = json_str.count('[') - json_str.count(']')
+    # 4. Reparar colones colgantes (ej: "key": )
+    # Si después de strip termina en :, le ponemos un null
+    if json_str.endswith(':'):
+        json_str += ' null'
     
-    # Necesitamos cerrar en el orden correcto. Usar un stack simple:
+    # 5. Caso crítico: Clave terminada en ':' dentro de objeto antes de cierre
+    # Ej: "key": ]  o  "key": } 
+    # Lo convertimos en "key": null
+    json_str = re.sub(r'("(?:\\[ "]|[^"])*")\s*:\s*([\]}])', r'\1: null\2', json_str)
+    
+    # 6. Cerrar estructuras abiertas respetando strings
     stack = []
-    for char in json_str:
-        if char == '{': stack.append('}')
-        elif char == '[': stack.append(']')
-        elif char == '}': 
-            if stack and stack[-1] == '}': stack.pop()
-        elif char == ']':
-            if stack and stack[-1] == ']': stack.pop()
+    in_string = False
+    escaped = False
     
-    # Cerrar lo que quedó en el stack en orden inverso
+    for char in json_str:
+        if char == '"' and not escaped:
+            in_string = not in_string
+        
+        if not in_string:
+            if char == '{': stack.append('}')
+            elif char == '[': stack.append(']')
+            elif char == '}': 
+                if stack and stack[-1] == '}': stack.pop()
+            elif char == ']':
+                if stack and stack[-1] == ']': stack.pop()
+        
+        if char == '\\' and not escaped:
+            escaped = True
+        else:
+            escaped = False
+
+    # Cerrar lo que quedó en el stack
     while stack:
-        json_str += stack.pop()
+        closing_char = stack.pop()
+        # Si al cerrar un objeto o array el texto termina en :, poner un null
+        if json_str.strip().endswith(':'):
+            json_str += ' null'
+        json_str += closing_char
         
     return json_str
 

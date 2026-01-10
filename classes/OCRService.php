@@ -156,6 +156,11 @@ class OCRService
                 // 1. Intentar Vision AI local (GPT-4o directo) - NUEVA PRIORIDAD
                 error_log("OCRService: Intentando Vision AI local (Prioridad 1)...");
                 $result = $this->callLocalVisionAI($filePath, $localContext);
+
+                // Si el motor local devuelve un error explícito, forzamos el catch para activar el fallback
+                if (!$result['success']) {
+                    throw new Exception("Error motor local: " . ($result['error'] ?? 'Desconocido'));
+                }
             } catch (Exception $e) {
                 error_log("OCRService: Falló Vision AI local. Intentando fallback a Railway...");
                 $errorDetails .= "Fallback Local Error: " . $e->getMessage() . "\n";
