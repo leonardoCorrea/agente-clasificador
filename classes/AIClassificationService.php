@@ -15,9 +15,9 @@ class AIClassificationService
     public function __construct()
     {
         $this->db = Database::getInstance();
-        $this->scriptPath = __DIR__ . '/../python-scripts/ai_classify.py';
+        $this->scriptPath = str_replace('\\', '/', realpath(__DIR__ . '/../python-scripts/ai_classify.py'));
         $this->apiKey = OPENAI_API_KEY;
-        $this->pythonPath = PYTHON_PATH;
+        $this->pythonPath = str_replace('\\', '/', PYTHON_PATH);
     }
 
     /**
@@ -164,43 +164,55 @@ class AIClassificationService
     }
 
     /**
-     * Ejecutar script Python de clasificación
+     * Ejecutar script Python de clasificación vía Railway
      */
     private function executeClassification($descripciones, $contexto = null)
     {
         try {
-            // Convertir descripciones a JSON
-            $jsonInput = json_encode($descripciones, JSON_UNESCAPED_UNICODE);
-            $jsonInput = addslashes($jsonInput);
+            $url = OCR_SERVICE_URL . '/api/classify/process';
 
-            // Convertir contexto a JSON si existe
-            $jsonContext = "[]";
-            if ($contexto) {
-                $jsonContext = json_encode($contexto, JSON_UNESCAPED_UNICODE);
-                $jsonContext = addslashes($jsonContext);
+            // Log para debugging
+            error_log("AI Classification Railway - Calling: " . $url);
+
+            $ch = curl_init($url);
+
+            $postFields = [
+                'descripciones' => json_encode($descripciones, JSON_UNESCAPED_UNICODE),
+                'api_key' => $this->apiKey
+            ];
+
+            if ($contexto !== null) {
+                $postFields['context'] = json_encode($contexto, JSON_UNESCAPED_UNICODE);
             }
 
-            // Ejecutar script Python
-            $command = sprintf(
-                '"%s" "%s" "%s" "%s" "%s" 2>&1',
-                $this->pythonPath,
-                $this->scriptPath,
-                $jsonInput,
-                $this->apiKey,
-                $jsonContext
-            );
+            curl_setopt_array($ch, [
+                CURLOPT_POST => true,
+                CURLOPT_POSTFIELDS => $postFields,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 300, // 5 minutos
+                CURLOPT_CONNECTTIMEOUT => 30,
+                CURLOPT_HTTPHEADER => [
+                    'Accept: application/json'
+                ]
+            ]);
 
-            $output = shell_exec($command);
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curlError = curl_error($ch);
+            curl_close($ch);
 
-            if ($output === null || $output === false) {
-                throw new Exception("Error ejecutando script Python de clasificación. Salida vacía o fallo de shell_exec. Comando: $command");
+            if ($curlError) {
+                throw new Exception("Error de conexión con microservicio IA Railway: " . $curlError);
             }
 
-            // Parsear resultado
-            $result = json_decode($output, true);
+            if ($httpCode !== 200) {
+                throw new Exception("Microservicio IA Railway retornó código HTTP $httpCode: " . substr($response, 0, 500));
+            }
 
-            if (!$result || !isset($result['success'])) {
-                throw new Exception("Respuesta inválida del script Python (JSON esperado). Salida recibida: [" . $output . "]");
+            $result = json_decode($response, true);
+
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                throw new Exception("Respuesta inválida del microservicio IA Railway: " . json_last_error_msg() . ". Respuesta: " . $response);
             }
 
             return $result;

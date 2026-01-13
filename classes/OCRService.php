@@ -481,14 +481,14 @@ class OCRService
      */
     private function callLocalVisionAI($filePath, $context = null)
     {
-        $pythonPath = IS_PRODUCTION ? 'python3' : 'python';
-        $scriptPath = BASE_PATH . '/python-scripts/ocr_process.py';
+        $pythonPath = str_replace('\\', '/', PYTHON_PATH);
+        $scriptPath = str_replace('\\', '/', realpath(BASE_PATH . '/python-scripts/ocr_process.py'));
 
         if (!file_exists($scriptPath)) {
             throw new Exception("Script de fallback local no encontrado en: " . $scriptPath);
         }
 
-        $cmd = escapeshellcmd("$pythonPath $scriptPath " . escapeshellarg($filePath) . " " . escapeshellarg($this->apiKey));
+        $cmd = "\"$pythonPath\" \"$scriptPath\" " . escapeshellarg($filePath) . " " . escapeshellarg($this->apiKey);
 
         if ($context) {
             $cmd .= " " . escapeshellarg(json_encode($context));

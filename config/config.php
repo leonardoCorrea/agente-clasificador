@@ -69,6 +69,13 @@ if (IS_PRODUCTION) {
 // Mantener por compatibilidad (ya no se usa directamente)
 define('PYTHON_SCRIPTS_DIR', __DIR__ . '/../python-scripts');
 
+// Configuración de Python según entorno
+if (IS_PRODUCTION) {
+    define('PYTHON_PATH', 'python3'); // Estándar en Linux
+} else {
+    define('PYTHON_PATH', 'C:/Python312/python.exe'); // Windows Dev
+}
+
 // ============================================================================
 // OPENAI API
 // ============================================================================

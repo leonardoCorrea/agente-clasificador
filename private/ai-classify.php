@@ -100,7 +100,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             header("Location: ai-classify.php?factura_id=$invoiceId&success=1");
             exit;
         } else {
-            $message = 'Error al procesar la clasificación por IA';
+            $lastErrorMessage = isset($aiResult['message']) ? $aiResult['message'] : 'Error desconocido';
+            $message = 'Error al procesar la clasificación por IA: ' . $lastErrorMessage;
             $messageType = 'danger';
         }
     }

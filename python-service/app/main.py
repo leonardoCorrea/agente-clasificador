@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
-from app.routers import ocr
+from app.routers import ocr, classify
 
 # Crear aplicación FastAPI
 app = FastAPI(
@@ -34,6 +34,7 @@ app.add_middleware(
 
 # Incluir routers
 app.include_router(ocr.router, prefix="/api/ocr", tags=["OCR"])
+app.include_router(classify.router, prefix="/api/classify", tags=["Classify"])
 
 
 from app.services.ocr_processor import BUILD_ID
