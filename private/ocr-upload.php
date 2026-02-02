@@ -610,15 +610,15 @@ $facturas = $invoice->getAll(['usuario_id' => $_SESSION['user_id']], 20);
             };
 
             // NUEVO: Función para actualizar progreso real o estimado
-            const updateUIProgress = (data) => {
+            const updateUIProgress = (data, currentAttempts) => {
                 if (data && data.observaciones && data.observaciones !== '') {
                     if (mainStatus) mainStatus.textContent = data.observaciones;
                 } else {
                     // Progresión visual estimada (SOLO si no hay observaciones reales)
-                    if (attempts === 5) {
+                    if (currentAttempts === 5) {
                         setStep(3);
                         if (mainStatus) mainStatus.textContent = "La IA está extrayendo los datos...";
-                    } else if (attempts === 15) {
+                    } else if (currentAttempts === 15) {
                         setStep(4);
                         if (mainStatus) mainStatus.textContent = "Validando y finalizando...";
                     }
@@ -683,7 +683,7 @@ $facturas = $invoice->getAll(['usuario_id' => $_SESSION['user_id']], 20);
                                             app.showAlert('Error en el procesamiento: ' + (statusData.observaciones || 'Error desconocido'), 'danger');
                                         }
                                     }
-                                    updateUIProgress(statusData); // Call updateUIProgress here
+                                    updateUIProgress(statusData, attempts); // Call updateUIProgress here
 
                                     if (attempts >= maxAttempts) {
                                         console.warn("OCR: Tiempo de espera máximo alcanzado.");

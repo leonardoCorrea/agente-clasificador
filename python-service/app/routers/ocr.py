@@ -28,16 +28,9 @@ async def process_invoice_ocr(
         JSON con resultados del OCR
     """
     temp_path = None
+    context_data = None
     
     try:
-        # Validar tamaño de archivo
-        file_content = await file.read()
-        file_size = len(file_content)
-        
-        if file_size > settings.MAX_FILE_SIZE:
-        temp_path = None
-        context_data = None
-        
         # Parsear contexto si existe
         if context:
             try:
