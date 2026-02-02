@@ -93,7 +93,7 @@ def process_ocr(file_path, api_key, context=None, page_number=None):
             for p_idx in pages_to_process:
                 print(f"DEBUG: Renderizando página {p_idx+1}...")
                 page = doc.load_page(p_idx)
-                pix = page.get_pixmap(dpi=150) # Subimos ligeramente el DPI para mejor calidad individual
+                pix = page.get_pixmap(dpi=200) # De vuelta a 200 DPI para mayor nitidez
                 temp_image = f"{file_path}_p{p_idx}.png"
                 pix.save(temp_image)
                 base64_images.append(encode_image(temp_image))
@@ -116,7 +116,10 @@ def process_ocr(file_path, api_key, context=None, page_number=None):
         
         print(f"HTTP Logs | OCR Process | Prepared {len(image_contents)} images for OpenAI Vision")
         
-        if context:
+        # Verificar si es una corroboración real (tiene items) o solo pistas (items_esperados)
+        is_corroboration = context and ('items' in context or 'proveedor' in context)
+
+        if is_corroboration:
             print(f"DEBUG: Usando modo CORROBORACIÓN con contexto.")
             system_prompt = """Eres un motor de OCR y validación de datos de alta precisión para facturas aduaneras. 
             Tu tarea es CORROBORAR si los datos del JSON proporcionado coinciden EXACTAMENTE con las imágenes adjuntas. 
@@ -125,6 +128,7 @@ def process_ocr(file_path, api_key, context=None, page_number=None):
             Datos actuales para corroborar: """ + json.dumps(context, ensure_ascii=False)
             user_prompt = "Compara los datos proporcionados con las imágenes y devuelve el JSON corregido siguiendo exactamente el mismo esquema."
         else:
+            print(f"DEBUG: Usando modo EXTRACCIÓN DIRECTA (con pistas si existen).")
             # Construir instrucción de ítems esperados si existe
             items_instruction = ""
             if context and 'items_esperados' in context and int(context['items_esperados']) > 0:
