@@ -22,11 +22,12 @@ class OCRService
      * Llamar al microservicio OCR vía HTTP
      * @param string $filePath Ruta al archivo a procesar
      * @param array|null $context Contexto opcional para corroboración
+     * @param int|null $pageNumber Página específica a procesar (X de N)
      * @param int $maxRetries Número máximo de reintentos
      * @return array Resultado del OCR
      * @throws Exception Si falla después de todos los reintentos
      */
-    private function callOCRService($filePath, $context = null, $maxRetries = 3)
+    private function callOCRService($filePath, $context = null, $pageNumber = null, $maxRetries = 3)
     {
         $attempt = 0;
         $lastError = null;
@@ -47,6 +48,10 @@ class OCRService
                     'file' => new CURLFile($filePath),
                     'api_key' => $this->apiKey
                 ];
+
+                if ($pageNumber !== null) {
+                    $postFields['page_number'] = $pageNumber;
+                }
 
                 if ($context !== null) {
                     $postFields['context'] = json_encode($context);
@@ -153,25 +158,54 @@ class OCRService
             }
 
             try {
-                // 1. Intentar Vision AI local (GPT-4o directo) - NUEVA PRIORIDAD
-                error_log("OCRService: Intentando Vision AI local (Prioridad 1)...");
-                $result = $this->callLocalVisionAI($filePath, $localContext);
+                // 1. Obtener información de páginas (NUEVA LÓGICA PASO A PASO)
+                error_log("OCRService: Obteniendo información de páginas...");
+                $this->db->update('facturas', ['observaciones' => 'Calculando páginas del documento...'], ['id' => $facturaId]);
+                $fileInfo = $this->getFileInfo($filePath);
+                $totalPages = $fileInfo['pages'] ?? 1;
+                error_log("OCRService: El documento tiene $totalPages página(s).");
 
-                // Si el motor local devuelve un error explícito, forzamos el catch para activar el fallback
-                if (!$result['success']) {
-                    throw new Exception("Error motor local: " . ($result['error'] ?? 'Desconocido'));
+                $allResults = [];
+                $errorDetails = "";
+
+                // Procesar cada página
+                for ($p = 1; $p <= $totalPages; $p++) {
+                    $statusMsg = "Procesando página $p de $totalPages...";
+                    error_log("OCRService: $statusMsg");
+                    $this->db->update('facturas', ['observaciones' => $statusMsg], ['id' => $facturaId]);
+
+                    try {
+                        // Intentar local con página específica (si el motor local lo soporta, por ahora asumo que no y uso Railway)
+                        // Para simplificar y cumplir el deseo del usuario de "ver el avance", usaremos Railway para el bucle
+                        $pageResult = $this->callOCRService($filePath, $localContext, $p);
+
+                        if ($pageResult['success']) {
+                            $allResults[] = $pageResult;
+                        } else {
+                            error_log("OCRService: Error en página $p: " . ($pageResult['error'] ?? 'Desconocido'));
+                        }
+                    } catch (Exception $pe) {
+                        error_log("OCRService: Excepción en página $p: " . $pe->getMessage());
+                    }
                 }
+
+                if (empty($allResults)) {
+                    throw new Exception("No se pudo procesar ninguna página correctamente.");
+                }
+
+                // UNIFICACIÓN DE RESULTADOS
+                $result = $this->mergeOCRResults($allResults);
+
             } catch (Exception $e) {
-                error_log("OCRService: Falló Vision AI local. Intentando fallback a Railway...");
-                $errorDetails .= "Fallback Local Error: " . $e->getMessage() . "\n";
+                error_log("OCRService: Falló procesamiento por páginas. Intentando fallback tradicional...");
+                $errorDetails .= "Multi-page Error: " . $e->getMessage() . "\n";
 
                 try {
-                    // 2. Fallback a Microservicio en Railway
-                    error_log("OCRService: Iniciando Fallback a Railway en " . $this->ocrServiceUrl);
+                    // Fallback a procesamiento completo (antiguo)
                     $result = $this->callOCRService($filePath);
                 } catch (Exception $e2) {
-                    error_log("OCRService: Falló también el fallback de Railway. Error: " . $e2->getMessage());
-                    throw new Exception("Fallo total en OCR. Local: " . $e->getMessage() . " | Railway: " . $e2->getMessage());
+                    error_log("OCRService: Fallo total. Error: " . $e2->getMessage());
+                    throw new Exception("Fallo total en OCR. Multi-page: " . $e->getMessage() . " | Fallback: " . $e2->getMessage());
                 }
             }
 
@@ -474,6 +508,83 @@ class OCRService
                 'message' => 'Error en corroboración: ' . $e->getMessage()
             ];
         }
+    }
+
+    /**
+     * Obtener metainformación del archivo (ej: páginas PDF)
+     */
+    public function getFileInfo($filePath)
+    {
+        error_log("OCR Service - Getting info for: " . $filePath);
+        $url = $this->ocrServiceUrl . '/api/ocr/info';
+
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => [
+                'file' => new CURLFile($filePath)
+            ],
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 30,
+            CURLOPT_CONNECTTIMEOUT => 10
+        ]);
+
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($httpCode !== 200) {
+            error_log("OCR Info Error - HTTP $httpCode: $response");
+            return ['success' => false, 'pages' => 1];
+        }
+
+        return json_decode($response, true);
+    }
+
+    /**
+     * Unificar resultados de múltiples páginas en uno solo
+     */
+    private function mergeOCRResults($allResults)
+    {
+        if (empty($allResults))
+            return null;
+
+        $finalResult = $allResults[0];
+        $allFacturas = [];
+
+        // El microservicio devuelve { "facturas": [ { ... } ] }
+        // Necesitamos unificar los items de todas las facturas de todas las páginas
+        // Si hay una sola factura física repartida en varias páginas, unificamos items.
+        // Si hay facturas distintas, las mantenemos separadas (aunque aquí asumimos 1 factura usualmente).
+
+        $masterFactura = null;
+        $allItems = [];
+        $totalText = "";
+
+        foreach ($allResults as $res) {
+            $facturas = $res['facturas'] ?? [];
+            foreach ($facturas as $f) {
+                if (!$masterFactura) {
+                    $masterFactura = $f;
+                }
+
+                $totalText .= ($f['texto_completo'] ?? "") . "\n";
+
+                $items = $f['datos_estructurados']['items'] ?? [];
+                foreach ($items as $item) {
+                    $allItems[] = $item;
+                }
+            }
+        }
+
+        if ($masterFactura) {
+            $masterFactura['texto_completo'] = trim($totalText);
+            $masterFactura['datos_estructurados']['items'] = $allItems;
+            $finalResult['facturas'] = [$masterFactura];
+        }
+
+        $finalResult['metodo'] = 'intelligent-ocr-multipage';
+        return $finalResult;
     }
 
     /**

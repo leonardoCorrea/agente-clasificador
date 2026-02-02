@@ -52,7 +52,7 @@ def repair_truncated_json(json_str):
     json_str += '}' * open_braces
     return json_str
 
-def process_ocr(file_path, api_key, context=None):
+def process_ocr(file_path, api_key, context=None, page_number=None):
     """
     Procesar OCR o Corroboración usando Vision Multi.
     Soporta múltiples páginas y múltiples facturas por archivo.
@@ -77,13 +77,24 @@ def process_ocr(file_path, api_key, context=None):
             doc = fitz.open(file_path)
             num_pages = len(doc)
             print(f"DEBUG: El PDF tiene {num_pages} páginas.")
-            max_pages = min(num_pages, 15)
             
-            for page_num in range(max_pages):
-                print(f"DEBUG: Procesando página {page_num+1}/{max_pages}...")
-                page = doc.load_page(page_num)
-                pix = page.get_pixmap(dpi=130)
-                temp_image = f"{file_path}_p{page_num}.png"
+            if page_number is not None:
+                # Procesar solo una página específica (1-indexed)
+                if page_number < 1 or page_number > num_pages:
+                    raise ValueError(f"Página {page_number} fuera de rango (1-{num_pages})")
+                pages_to_process = [page_number - 1]
+                print(f"DEBUG: Procesando solo página específica: {page_number}")
+            else:
+                # Comportamiento anterior: procesar hasta 15 páginas de golpe
+                max_pages = min(num_pages, 15)
+                pages_to_process = list(range(max_pages))
+                print(f"DEBUG: Procesando rango de páginas: 1-{max_pages}")
+            
+            for p_idx in pages_to_process:
+                print(f"DEBUG: Renderizando página {p_idx+1}...")
+                page = doc.load_page(p_idx)
+                pix = page.get_pixmap(dpi=150) # Subimos ligeramente el DPI para mejor calidad individual
+                temp_image = f"{file_path}_p{p_idx}.png"
                 pix.save(temp_image)
                 base64_images.append(encode_image(temp_image))
                 os.remove(temp_image)

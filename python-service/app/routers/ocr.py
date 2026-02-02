@@ -12,7 +12,8 @@ router = APIRouter()
 async def process_invoice_ocr(
     file: UploadFile = File(..., description="Archivo PDF o imagen de la factura"),
     api_key: str = Form(..., description="OpenAI API Key"),
-    context: str = Form(None, description="Contexto JSON opcional para corroboración")
+    context: str = Form(None, description="Contexto JSON opcional para corroboración"),
+    page_number: int = Form(None, description="Número de página específico a procesar (1-indexed)")
 ):
     """
     Procesar factura con OCR usando OpenAI Vision
@@ -65,7 +66,7 @@ async def process_invoice_ocr(
                 )
         
         # Procesar OCR
-        result = process_ocr(temp_path, api_key, context_data)
+        result = process_ocr(temp_path, api_key, context_data, page_number)
         
         return result
         
@@ -88,6 +89,35 @@ async def process_invoice_ocr(
             except:
                 pass
 
+
+@router.post("/info")
+async def get_pdf_info(
+    file: UploadFile = File(..., description="Archivo PDF")
+):
+    """Obtener información básica del PDF (número de páginas)"""
+    temp_path = None
+    try:
+        file_content = await file.read()
+        file_ext = os.path.splitext(file.filename)[1].lower()
+        
+        if file_ext != '.pdf':
+            return {"success": True, "pages": 1, "format": file_ext}
+            
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp:
+            tmp.write(file_content)
+            temp_path = tmp.name
+            
+        import fitz
+        doc = fitz.open(temp_path)
+        pages = len(doc)
+        doc.close()
+        
+        return {"success": True, "pages": pages, "format": "pdf"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            os.unlink(temp_path)
 
 @router.get("/status")
 async def get_status():

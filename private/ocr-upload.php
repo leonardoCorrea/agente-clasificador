@@ -675,6 +675,9 @@ $facturas = $invoice->getAll(['usuario_id' => $_SESSION['user_id']], 20);
                                         if (typeof app !== 'undefined' && app.showAlert) {
                                             app.showAlert('Error en el procesamiento: ' + (statusData.observaciones || 'Error desconocido'), 'danger');
                                         }
+                                    } else if (statusData.observaciones) {
+                                        // NUEVO: Mostrar progreso detallado (ej: página X de N)
+                                        if (mainStatus) mainStatus.textContent = statusData.observaciones;
                                     }
 
                                     if (attempts >= maxAttempts) {
