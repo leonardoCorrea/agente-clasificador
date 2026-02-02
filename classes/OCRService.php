@@ -342,12 +342,13 @@ class OCRService
                     // Totales
                     'subtotal' => $this->cleanDecimal($totales['subtotal'] ?? 0),
                     'descuento' => $this->cleanDecimal($totales['descuento'] ?? 0),
-                    'impuesto_calculado' => $this->cleanDecimal($totales['impuesto_monto'] ?? ($totales['tax_amount'] ?? 0)),
+                    'impuesto_monto' => $this->cleanDecimal($totales['impuesto_monto'] ?? ($totales['tax_amount'] ?? 0)),
                     'impuesto_porcentaje' => $this->cleanDecimal($totales['impuesto_porcentaje'] ?? ($totales['tax_percentage'] ?? 0)),
                     'total_final' => $this->cleanDecimal($totales['total_final'] ?? ($totales['total'] ?? 0)),
                     'total_factura' => $this->cleanDecimal($totales['total_final'] ?? ($totales['total'] ?? 0)),
 
-                    'estado' => 'ocr_completado'
+                    'estado' => 'ocr_completado',
+                    'observaciones' => 'Procesamiento finalizado con éxito.'
                 ];
 
                 $this->db->update('facturas', $updateData, ['id' => $currentFacturaId]);

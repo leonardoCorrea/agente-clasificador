@@ -87,12 +87,6 @@ async def process_invoice_ocr(
         result = process_ocr(temp_path, api_key, context_data, page_number)
         
         # Si NO es sesión, limpiar el temporal (si es sesión, se queda para la siguiente página)
-        if not session_id and temp_path and os.path.exists(temp_path):
-            try:
-                os.unlink(temp_path)
-            except:
-                pass
-            
         return result
         
     except HTTPException:
@@ -107,8 +101,8 @@ async def process_invoice_ocr(
         )
         
     finally:
-        # Limpiar archivo temporal
-        if temp_path and os.path.exists(temp_path):
+        # Limpiar archivo temporal SOLO si NO es una sesión
+        if not session_id and temp_path and os.path.exists(temp_path):
             try:
                 os.unlink(temp_path)
             except:
