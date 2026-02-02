@@ -228,6 +228,18 @@ class OCRService
 
                         if ($pageResult['success']) {
                             $allResults[] = $pageResult;
+
+                            // Extraer cuántos ítems se encontraron en esta página para el log/UI
+                            $pageItemsCount = 0;
+                            if (isset($pageResult['facturas'][0]['datos_structured']['items'])) {
+                                $pageItemsCount = count($pageResult['facturas'][0]['datos_structured']['items']);
+                            } elseif (isset($pageResult['facturas'][0]['datos_estructurados']['items'])) {
+                                $pageItemsCount = count($pageResult['facturas'][0]['datos_estructurados']['items']);
+                            }
+
+                            $statusMsg = "Analizada página $p de $totalPages. Encontrados: $pageItemsCount ítems.";
+                            error_log("OCRService: $statusMsg");
+                            $this->db->update('facturas', ['observaciones' => $statusMsg], ['id' => $facturaId]);
                         } else {
                             error_log("OCRService: Error en página $p: " . ($pageResult['error'] ?? 'Desconocido'));
                         }

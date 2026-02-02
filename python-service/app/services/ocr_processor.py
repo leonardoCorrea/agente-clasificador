@@ -194,6 +194,7 @@ def process_ocr(file_path, api_key, context=None, page_number=None):
         
         content = response.choices[0].message.content
         print(f"HTTP Logs | OCR Process | OpenAI Response Received | Size: {len(content)} characters")
+        print(f"DEBUG: OpenAI Content Snippet: {content[:1000]}")
         
         try:
             result = json.loads(content)
@@ -241,7 +242,8 @@ def clean_amount(value):
     except: return 0.0
 
 def correct_invoice_data(factura):
-    datos = factura.get('datos_estructurados', {})
+    # Intentar obtener datos de ambas posibles llaves (el prompt usa estructurados, pero a veces GPT responde structured)
+    datos = factura.get('datos_estructurados', factura.get('datos_structured', {}))
     items = datos.get('items', [])
     totales = datos.get('totales', {})
     calc_subtotal = 0.0
