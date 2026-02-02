@@ -609,6 +609,22 @@ $facturas = $invoice->getAll(['usuario_id' => $_SESSION['user_id']], 20);
                 });
             };
 
+            // NUEVO: Función para actualizar progreso real o estimado
+            const updateUIProgress = (data) => {
+                if (data && data.observaciones && data.observaciones !== '') {
+                    if (mainStatus) mainStatus.textContent = data.observaciones;
+                } else {
+                    // Progresión visual estimada (SOLO si no hay observaciones reales)
+                    if (attempts === 5) {
+                        setStep(3);
+                        if (mainStatus) mainStatus.textContent = "La IA está extrayendo los datos...";
+                    } else if (attempts === 15) {
+                        setStep(4);
+                        if (mainStatus) mainStatus.textContent = "Validando y finalizando...";
+                    }
+                }
+            };
+
             // Activar visualmente el modal
             modal.classList.add('active');
             let tipInterval = setInterval(updateTip, 6000);
@@ -639,17 +655,6 @@ $facturas = $invoice->getAll(['usuario_id' => $_SESSION['user_id']], 20);
                             attempts++;
                             if (attemptLabel) attemptLabel.textContent = `Intento de verificación: ${attempts}`;
 
-                            // Progresión visual estimada (SOLO si no hay observaciones reales)
-                            if (!statusData || !statusData.observaciones) {
-                                if (attempts === 5) {
-                                    setStep(3);
-                                    if (mainStatus) mainStatus.textContent = "La IA está extrayendo los datos...";
-                                } else if (attempts === 15) {
-                                    setStep(4);
-                                    if (mainStatus) mainStatus.textContent = "Validando y finalizando...";
-                                }
-                            }
-
                             const controller = new AbortController();
                             const timeoutId = setTimeout(() => controller.abort(), 25000);
 
@@ -677,10 +682,8 @@ $facturas = $invoice->getAll(['usuario_id' => $_SESSION['user_id']], 20);
                                         if (typeof app !== 'undefined' && app.showAlert) {
                                             app.showAlert('Error en el procesamiento: ' + (statusData.observaciones || 'Error desconocido'), 'danger');
                                         }
-                                    } else if (statusData.observaciones) {
-                                        // NUEVO: Mostrar progreso detallado (ej: página X de N)
-                                        if (mainStatus) mainStatus.textContent = statusData.observaciones;
                                     }
+                                    updateUIProgress(statusData); // Call updateUIProgress here
 
                                     if (attempts >= maxAttempts) {
                                         console.warn("OCR: Tiempo de espera máximo alcanzado.");

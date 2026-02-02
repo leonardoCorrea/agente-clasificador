@@ -35,20 +35,37 @@ async def process_invoice_ocr(
         file_size = len(file_content)
         
         if file_size > settings.MAX_FILE_SIZE:
-            raise HTTPException(
-                status_code=413,
-                detail=f"Archivo demasiado grande. Máximo permitido: {settings.MAX_FILE_SIZE / 1024 / 1024}MB"
-            )
+        temp_path = None
+        context_data = None
         
-        # Validar extensión
-        file_ext = os.path.splitext(file.filename)[1].lower()
-        allowed_extensions = ['.pdf', '.jpg', '.jpeg', '.png']
-        
-        if file_ext not in allowed_extensions:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Tipo de archivo no permitido. Extensiones permitidas: {', '.join(allowed_extensions)}"
-            )
+        # Parsear contexto si existe
+        if context:
+            try:
+                context_data = json.loads(context)
+            except json.JSONDecodeError:
+                raise HTTPException(
+                    status_code=400,
+                    detail="El contexto proporcionado no es un JSON válido"
+                )
+
+        # Validar tamaño y extensión solo si se sube un archivo nuevo
+        if file:
+            file_content = await file.read()
+            file_size = len(file_content)
+            
+            if file_size > settings.MAX_FILE_SIZE:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"Archivo demasiado grande. Máximo permitido: {settings.MAX_FILE_SIZE / 1024 / 1024}MB"
+                )
+            
+            file_ext = os.path.splitext(file.filename)[1].lower()
+            allowed_extensions = {'.pdf', '.jpg', '.jpeg', '.png'}
+            if file_ext not in allowed_extensions:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Tipo de archivo no permitido. Extensiones permitidas: {', '.join(allowed_extensions)}"
+                )
         
         # Si hay session_id, buscar el archivo en /tmp
         if session_id:
