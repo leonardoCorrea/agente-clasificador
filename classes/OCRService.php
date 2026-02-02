@@ -20,14 +20,15 @@ class OCRService
 
     /**
      * Llamar al microservicio OCR vía HTTP
-     * @param string $filePath Ruta al archivo a procesar
+     * @param string|null $filePath Ruta al archivo (null si se usa sessionId)
      * @param array|null $context Contexto opcional para corroboración
      * @param int|null $pageNumber Página específica a procesar (X de N)
+     * @param string|null $sessionId ID de sesión para no re-subir el archivo
      * @param int $maxRetries Número máximo de reintentos
      * @return array Resultado del OCR
      * @throws Exception Si falla después de todos los reintentos
      */
-    private function callOCRService($filePath, $context = null, $pageNumber = null, $maxRetries = 3)
+    private function callOCRService($filePath, $context = null, $pageNumber = null, $sessionId = null, $maxRetries = 3)
     {
         $attempt = 0;
         $lastError = null;
@@ -45,9 +46,14 @@ class OCRService
                 $ch = curl_init($url);
 
                 $postFields = [
-                    'file' => new CURLFile($filePath),
                     'api_key' => $this->apiKey
                 ];
+
+                if ($sessionId !== null) {
+                    $postFields['session_id'] = $sessionId;
+                } else if ($filePath !== null) {
+                    $postFields['file'] = new CURLFile($filePath);
+                }
 
                 if ($pageNumber !== null) {
                     $postFields['page_number'] = $pageNumber;
@@ -113,6 +119,40 @@ class OCRService
     }
 
     /**
+     * Preparar una sesión de OCR en el servidor (sube el archivo una sola vez)
+     */
+    private function prepareSession($filePath)
+    {
+        error_log("OCR Service - Preparing session for: " . $filePath);
+        $url = $this->ocrServiceUrl . '/api/ocr/prepare';
+
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => [
+                'file' => new CURLFile($filePath)
+            ],
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 60,
+            CURLOPT_CONNECTTIMEOUT => 15,
+            CURLOPT_HTTPHEADER => [
+                'Accept: application/json'
+            ]
+        ]);
+
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($httpCode !== 200) {
+            error_log("OCR Prepare Error - HTTP $httpCode: $response");
+            return ['success' => false, 'pages' => 1];
+        }
+
+        return json_decode($response, true);
+    }
+
+    /**
      * Procesar factura con OCR
      */
     public function processInvoice($facturaId)
@@ -158,26 +198,32 @@ class OCRService
             }
 
             try {
-                // 1. Obtener información de páginas (NUEVA LÓGICA PASO A PASO)
-                error_log("OCRService: Obteniendo información de páginas...");
-                $this->db->update('facturas', ['observaciones' => 'Calculando páginas del documento...'], ['id' => $facturaId]);
-                $fileInfo = $this->getFileInfo($filePath);
-                $totalPages = $fileInfo['pages'] ?? 1;
-                error_log("OCRService: El documento tiene $totalPages página(s).");
+                // 1. Iniciar Sesión (SUBE EL ARCHIVO UNA SOLA VEZ)
+                error_log("OCRService: Iniciando sesión de procesamiento...");
+                $this->db->update('facturas', ['observaciones' => 'Preparando documento para análisis...'], ['id' => $facturaId]);
+
+                $sessionInfo = $this->prepareSession($filePath);
+
+                if (!$sessionInfo['success']) {
+                    throw new Exception("No se pudo preparar la sesión de OCR: " . ($sessionInfo['detail'] ?? 'Error desconocido'));
+                }
+
+                $sessionId = $sessionInfo['session_id'];
+                $totalPages = $sessionInfo['pages'] ?? 1;
+                error_log("OCRService: Sesión iniciada: $sessionId. Total páginas: $totalPages");
 
                 $allResults = [];
                 $errorDetails = "";
 
-                // Procesar cada página
+                // Procesar cada página usando el sessionId
                 for ($p = 1; $p <= $totalPages; $p++) {
-                    $statusMsg = "Procesando página $p de $totalPages...";
+                    $statusMsg = "Analizando página $p de $totalPages...";
                     error_log("OCRService: $statusMsg");
                     $this->db->update('facturas', ['observaciones' => $statusMsg], ['id' => $facturaId]);
 
                     try {
-                        // Intentar local con página específica (si el motor local lo soporta, por ahora asumo que no y uso Railway)
-                        // Para simplificar y cumplir el deseo del usuario de "ver el avance", usaremos Railway para el bucle
-                        $pageResult = $this->callOCRService($filePath, $localContext, $p);
+                        // Llamada eficiente: pasamos sessionId en lugar del archivo físico
+                        $pageResult = $this->callOCRService(null, $localContext, $p, $sessionId);
 
                         if ($pageResult['success']) {
                             $allResults[] = $pageResult;

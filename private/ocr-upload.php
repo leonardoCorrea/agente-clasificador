@@ -631,7 +631,7 @@ $facturas = $invoice->getAll(['usuario_id' => $_SESSION['user_id']], 20);
                     if (data.success) {
                         console.log("OCR: Respuesta del servidor exitosa, iniciando polling de estado.");
                         let attempts = 0;
-                        const maxAttempts = 40; // Reducido de 150 a pedido del usuario
+                        const maxAttempts = 500; // Aumentado drásticamente para aguantar archivos de muchísimas páginas
                         setStep(2);
                         if (mainStatus) mainStatus.textContent = "Analizando el documento...";
 
@@ -639,13 +639,15 @@ $facturas = $invoice->getAll(['usuario_id' => $_SESSION['user_id']], 20);
                             attempts++;
                             if (attemptLabel) attemptLabel.textContent = `Intento de verificación: ${attempts}`;
 
-                            // Progresión visual estimada
-                            if (attempts === 5) {
-                                setStep(3);
-                                if (mainStatus) mainStatus.textContent = "La IA está extrayendo los datos...";
-                            } else if (attempts === 15) {
-                                setStep(4);
-                                if (mainStatus) mainStatus.textContent = "Validando y finalizando...";
+                            // Progresión visual estimada (SOLO si no hay observaciones reales)
+                            if (!statusData || !statusData.observaciones) {
+                                if (attempts === 5) {
+                                    setStep(3);
+                                    if (mainStatus) mainStatus.textContent = "La IA está extrayendo los datos...";
+                                } else if (attempts === 15) {
+                                    setStep(4);
+                                    if (mainStatus) mainStatus.textContent = "Validando y finalizando...";
+                                }
                             }
 
                             const controller = new AbortController();
