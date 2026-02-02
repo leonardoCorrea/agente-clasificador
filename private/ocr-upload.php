@@ -651,7 +651,7 @@ $facturas = $invoice->getAll(['usuario_id' => $_SESSION['user_id']], 20);
                         setStep(2);
                         if (mainStatus) mainStatus.textContent = "Analizando el documento...";
 
-                        const interval = setInterval(() => {
+                        const pollStatus = () => {
                             attempts++;
                             if (attemptLabel) attemptLabel.textContent = `Intento de verificación: ${attempts}`;
 
@@ -683,7 +683,7 @@ $facturas = $invoice->getAll(['usuario_id' => $_SESSION['user_id']], 20);
                                             app.showAlert('Error en el procesamiento: ' + (statusData.observaciones || 'Error desconocido'), 'danger');
                                         }
                                     }
-                                    updateUIProgress(statusData, attempts); // Call updateUIProgress here
+                                    updateUIProgress(statusData, attempts);
 
                                     if (attempts >= maxAttempts) {
                                         console.warn("OCR: Tiempo de espera máximo alcanzado.");
@@ -699,7 +699,13 @@ $facturas = $invoice->getAll(['usuario_id' => $_SESSION['user_id']], 20);
                                     clearTimeout(timeoutId);
                                     console.warn("OCR Polling Warning: " + err.message);
                                 });
-                        }, 5000); // Polling cada 5 segundos
+                        };
+
+                        // Ejecutar el primer chequeo DE INMEDIATO
+                        pollStatus();
+
+                        // Luego programar el intervalo cada 3 segundos (más rápido que 5s)
+                        const interval = setInterval(pollStatus, 3000);
                     } else {
                         console.error("OCR Failure: " + data.message);
                         modal.classList.remove('active');

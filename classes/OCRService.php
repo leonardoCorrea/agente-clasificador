@@ -592,31 +592,39 @@ class OCRService
      */
     private function mergeOCRResults($allResults)
     {
-        if (empty($allResults))
+        if (empty($allResults)) {
+            error_log("OCRService: mergeOCRResults recibió un array vacío.");
             return null;
+        }
+
+        error_log("OCRService: Iniciando unificación de " . count($allResults) . " resultados de página.");
 
         $finalResult = $allResults[0];
-        $allFacturas = [];
-
-        // El microservicio devuelve { "facturas": [ { ... } ] }
-        // Necesitamos unificar los items de todas las facturas de todas las páginas
-        // Si hay una sola factura física repartida en varias páginas, unificamos items.
-        // Si hay facturas distintas, las mantenemos separadas (aunque aquí asumimos 1 factura usualmente).
-
         $masterFactura = null;
         $allItems = [];
         $totalText = "";
 
-        foreach ($allResults as $res) {
+        foreach ($allResults as $idx => $res) {
             $facturas = $res['facturas'] ?? [];
-            foreach ($facturas as $f) {
+            $pageNum = $idx + 1;
+
+            if (empty($facturas)) {
+                error_log("OCRService [Página $pageNum]: No se detectaron facturas.");
+                continue;
+            }
+
+            foreach ($facturas as $fIdx => $f) {
                 if (!$masterFactura) {
                     $masterFactura = $f;
+                    error_log("OCRService [Página $pageNum]: Tomando datos de cabecera de la primera factura detectada.");
                 }
 
                 $totalText .= ($f['texto_completo'] ?? "") . "\n";
 
                 $items = $f['datos_estructurados']['items'] ?? [];
+                $itemsCount = count($items);
+                error_log("OCRService [Página $pageNum, Factura $fIdx]: Encontrados $itemsCount ítems.");
+
                 foreach ($items as $item) {
                     $allItems[] = $item;
                 }
@@ -627,6 +635,9 @@ class OCRService
             $masterFactura['texto_completo'] = trim($totalText);
             $masterFactura['datos_estructurados']['items'] = $allItems;
             $finalResult['facturas'] = [$masterFactura];
+            error_log("OCRService: Unificación completada. Total ítems unificados: " . count($allItems));
+        } else {
+            error_log("OCRService: No se encontró ninguna 'masterFactura' tras recorrer los resultados.");
         }
 
         $finalResult['metodo'] = 'intelligent-ocr-multipage';
