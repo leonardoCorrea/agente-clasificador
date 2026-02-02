@@ -223,6 +223,7 @@ class OCRService
 
                     try {
                         // Llamada eficiente: pasamos sessionId en lugar del archivo físico
+                        // RE-INSTALAR CONTEXTO POR CADA PÁGINA PARA GUIAR A LA IA
                         $pageResult = $this->callOCRService(null, $localContext, $p, $sessionId);
 
                         if ($pageResult['success']) {
@@ -605,6 +606,9 @@ class OCRService
         $allItems = [];
         $totalText = "";
 
+        $grandTotal = 0;
+        $maxTax = 0;
+
         foreach ($allResults as $idx => $res) {
             $facturas = $res['facturas'] ?? [];
             $pageNum = $idx + 1;
@@ -615,9 +619,10 @@ class OCRService
             }
 
             foreach ($facturas as $fIdx => $f) {
-                if (!$masterFactura) {
+                // Tomar los datos de cabecera de la primera que tenga datos reales (numero_factura o proveedor)
+                if (!$masterFactura || (empty($masterFactura['datos_estructurados']['numero_factura']) && !empty($f['datos_estructurados']['numero_factura']))) {
                     $masterFactura = $f;
-                    error_log("OCRService [Página $pageNum]: Tomando datos de cabecera de la primera factura detectada.");
+                    error_log("OCRService [Página $pageNum]: Usando esta factura como base de cabecera.");
                 }
 
                 $totalText .= ($f['texto_completo'] ?? "") . "\n";
@@ -629,12 +634,27 @@ class OCRService
                 foreach ($items as $item) {
                     $allItems[] = $item;
                 }
+
+                // Intentar capturar el total más alto encontrado (el total suele estar en la última página)
+                $currentTotal = (float) ($f['datos_estructurados']['totales']['total_final'] ?? 0);
+                if ($currentTotal > $grandTotal)
+                    $grandTotal = $currentTotal;
+
+                $currentTax = (float) ($f['datos_estructurados']['totales']['impuesto_monto'] ?? 0);
+                if ($currentTax > $maxTax)
+                    $maxTax = $currentTax;
             }
         }
 
         if ($masterFactura) {
             $masterFactura['texto_completo'] = trim($totalText);
             $masterFactura['datos_estructurados']['items'] = $allItems;
+
+            // Si el master no tiene el total, usar el máximo encontrado
+            if ((float) ($masterFactura['datos_estructurados']['totales']['total_final'] ?? 0) < $grandTotal) {
+                $masterFactura['datos_estructurados']['totales']['total_final'] = $grandTotal;
+            }
+
             $finalResult['facturas'] = [$masterFactura];
             error_log("OCRService: Unificación completada. Total ítems unificados: " . count($allItems));
         } else {

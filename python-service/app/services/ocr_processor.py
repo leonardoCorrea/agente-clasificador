@@ -125,9 +125,16 @@ def process_ocr(file_path, api_key, context=None, page_number=None):
             Datos actuales para corroborar: """ + json.dumps(context, ensure_ascii=False)
             user_prompt = "Compara los datos proporcionados con las imágenes y devuelve el JSON corregido siguiendo exactamente el mismo esquema."
         else:
-            print(f"DEBUG: Usando modo EXTRACCIÓN DIRECTA.")
+            # Construir instrucción de ítems esperados si existe
+            items_instruction = ""
+            if context and 'items_esperados' in context and int(context['items_esperados']) > 0:
+                count = int(context['items_esperados'])
+                items_instruction = f"\n\n⚠️ INSTRUCCIÓN PRIORITARIA: Este documento tiene EXACTAMENTE {count} LÍNEAS de ítems. Debes encontrarlas todas."
+
             system_prompt = """Eres un motor de OCR de grado industrial especializado en facturas comerciales y documentos de transporte.
             Tu objetivo es extraer información estructurada con precisión del 100%.
+            
+            ⚠️ ALERTA DE TRUNCAMIENTO: Si la factura es MUY larga o tiene muchos ítems, concéntrate en extraer ABSOLUTAMENTE TODOS los elementos del array "items". Puedes ser breve en las direcciones si es necesario para ahorrar espacio.
             
             ESQUEMA DE RESPUESTA (JSON):
             {
@@ -146,13 +153,13 @@ def process_ocr(file_path, api_key, context=None, page_number=None):
                       {
                         "numero_linea": 1,
                         "numero_serie_parte": "SKU o Part Number",
-                        "descripcion": "Descripción detallada de la mercancía",
-                        "cantidad": 00.00,
-                        "unidad_medida": "PCS, KG, SETS",
-                        "precio_unitario": 00.00,
-                        "precio_total": 00.00,
-                        "caracteristicas": "HS Code, materiales, etc.",
-                        "datos_importantes": "Cualquier otra info técnica"
+                        "descripcion": "Descripción detallada",
+                        "cantidad": 0.0,
+                        "unidad_medida": "PCS, KG, etc.",
+                        "precio_unitario": 0.0,
+                        "precio_total": 0.0,
+                        "caracteristicas": "HS Code, etc.",
+                        "datos_importantes": "Info técnica"
                       }
                     ],
                     "totales": {
@@ -168,11 +175,11 @@ def process_ocr(file_path, api_key, context=None, page_number=None):
             }
 
             REGLAS CRÍTICAS:
-            1. Si hay múltiples facturas en el mismo archivo, genera un objeto por cada una en el array "facturas".
-            2. Extrae TODOS los ítems de la tabla. No omitas ninguno.
-            3. Si un dato no existe, usa null o cadena vacía, pero mantén la estructura.
-            4. Los números deben ser numéricos (no strings si es posible) o strings limpios de símbolos.
-            """
+            1. Si hay múltiples facturas, genera un objeto por cada una.
+            2. Extrae TODOS los ítems de la tabla. No omitas líneas.
+            3. Si un dato no existe, usa null o "".
+            4. Números deben ser floats o ints limpios.
+            """ + items_instruction
             user_prompt = "Analiza detalladamente las imágenes y extrae toda la información en el formato JSON solicitado."
 
         response = client.chat.completions.create(
