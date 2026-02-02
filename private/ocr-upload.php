@@ -243,6 +243,48 @@ $facturas = $invoice->getAll(['usuario_id' => $_SESSION['user_id']], 20);
             margin-bottom: 0.5rem;
             display: block;
         }
+
+        .ocr-error-container {
+            display: none;
+            background: rgba(220, 53, 69, 0.1);
+            border: 1px solid rgba(220, 53, 69, 0.3);
+            border-radius: 1rem;
+            padding: 1.25rem;
+            margin: 1.5rem 0;
+            color: #ff8e9a;
+            text-align: left;
+            font-size: 0.95rem;
+        }
+
+        .ocr-modal-overlay.is-error .ocr-error-container {
+            display: block;
+        }
+
+        .ocr-modal-overlay.is-error .ocr-loader-container,
+        .ocr-modal-overlay.is-error .ocr-steps,
+        .ocr-modal-overlay.is-error .ocr-tip-box {
+            display: none !important;
+        }
+
+        .ocr-close-btn {
+            display: none;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 0.75rem 2rem;
+            border-radius: 2rem;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .ocr-modal-overlay.is-error .ocr-close-btn {
+            display: inline-block;
+        }
+
+        .ocr-close-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
     </style>
 </head>
 
@@ -481,11 +523,26 @@ $facturas = $invoice->getAll(['usuario_id' => $_SESSION['user_id']], 20);
                 </p>
             </div>
 
+            <div class="ocr-error-container" id="ocrErrorContainer">
+                <div class="d-flex align-items-center gap-3 mb-2">
+                    <i class="fas fa-exclamation-triangle fa-2x"></i>
+                    <h5 class="m-0">Error en el proceso</h5>
+                </div>
+                <p id="ocrErrorMessage" class="mb-0">Ha ocurrido un error inesperado al procesar la factura.</p>
+            </div>
+
             <div class="mt-4">
                 <span class="badge rounded-pill bg-dark border border-secondary text-secondary px-3 py-2"
                     id="ocrAttempt" style="font-size: 0.75rem;">
                     Intento de verificación: 0
                 </span>
+            </div>
+
+            <div class="mt-4">
+                <button type="button" class="ocr-close-btn"
+                    onclick="document.getElementById('ocrModal').classList.remove('active', 'is-error')">
+                    Cerrar y Reintentar
+                </button>
             </div>
         </div>
     </div>
@@ -675,12 +732,18 @@ $facturas = $invoice->getAll(['usuario_id' => $_SESSION['user_id']], 20);
                                             window.location.href = 'ocr-upload.php?message=' + encodeURIComponent('OCR completado con éxito') + '&type=success';
                                         }, 1500);
                                     } else if (statusData.estado === 'error') {
-                                        console.error("OCR Server Error: " + (statusData.observaciones || "Error desconocido"));
+                                        const errorMsg = statusData.observaciones || "Error desconocido";
+                                        console.error("OCR Server Error: " + errorMsg);
                                         clearInterval(interval);
                                         clearInterval(tipInterval);
-                                        modal.classList.remove('active');
+
+                                        // NUEVO: No cerrar modal, mostrar error persistente
+                                        modal.classList.add('is-error');
+                                        const errorMsgEl = document.getElementById('ocrErrorMessage');
+                                        if (errorMsgEl) errorMsgEl.textContent = errorMsg;
+
                                         if (typeof app !== 'undefined' && app.showAlert) {
-                                            app.showAlert('Error en el procesamiento: ' + (statusData.observaciones || 'Error desconocido'), 'danger');
+                                            app.showAlert('Error en el procesamiento: ' + errorMsg, 'danger');
                                         }
                                     }
                                     updateUIProgress(statusData, attempts);
